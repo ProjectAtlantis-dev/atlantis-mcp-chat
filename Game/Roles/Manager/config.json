@@ -1,0 +1,6 @@
+{
+  "displayName": "Hotel Manager",
+  "purpose": "Oversees staff and handles escalations.",
+  "defaultLocation": "Hallway",
+  "defaultBot": "lars"
+}

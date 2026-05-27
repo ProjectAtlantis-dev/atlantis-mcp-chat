@@ -1,0 +1,22 @@
+{
+  "extraPaths": [
+    "../aud/atlantis-mcp-server/python-server"
+  ],
+  "stubPath": "typings",
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Darwin",
+  "venvPath": "../aud/atlantis-mcp-server/python-server",
+  "venv": "venv",
+
+  "typeCheckingMode": "basic",
+
+  "reportMissingImports": "warning",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalCall": "none",
+  "reportOptionalSubscript": "none",
+  "reportOptionalIterable": "none",
+  "reportOptionalContextManager": "none",
+  "reportOptionalOperand": "none",
+  "reportUnusedImport": "none",
+  "reportUnusedVariable": "none"
+}

@@ -1,0 +1,6 @@
+{
+  "displayName": "Security Guard",
+  "purpose": "Watches the cameras and patrols the facility.",
+  "defaultLocation": "SecurityOffice",
+  "defaultBot": "sven"
+}

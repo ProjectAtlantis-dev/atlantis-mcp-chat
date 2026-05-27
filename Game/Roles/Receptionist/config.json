@@ -1,0 +1,6 @@
+{
+  "displayName": "Hotel Receptionist",
+  "purpose": "Greets and checks in arrivals at the front desk.",
+  "defaultLocation": "Lobby",
+  "defaultBot": "kitty"
+}

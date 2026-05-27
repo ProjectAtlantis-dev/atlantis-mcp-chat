@@ -1,0 +1,37 @@
+"""Game tick callback — fires on engine cadence to let bots initiate action.
+
+Symmetric to chat_callback but without a transcript trigger. With zero AI
+slots in-world there is nothing to initiate; that's the state of an empty
+game, not an error.
+"""
+
+import atlantis
+import logging
+
+from dynamic_functions.Home.slot import _slot_rows
+
+logger = logging.getLogger("mcp_server")
+
+_BUSY_KEY = "chat_busy"
+
+
+@tick
+async def tick_callback(game_key: str):
+    """Game tick: let an AI bot initiate action if any are in-world."""
+    if not atlantis.get_session_key():
+        logger.warning("tick_callback fired without session context, skipping")
+        return
+
+    if atlantis.session_shared.get(_BUSY_KEY):
+        logger.debug("tick_callback: chat busy, skipping")
+        return
+
+    ai_in_world = [
+        row for row in _slot_rows(game_key)
+        if row["assignment"] == "ai" and row["currentLocation"]
+    ]
+    if not ai_in_world:
+        await atlantis.client_log("⏱ tick: no AI bots in-world")
+        return
+
+    raise NotImplementedError("tick with in-world AI bots not yet implemented")

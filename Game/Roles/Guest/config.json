@@ -1,0 +1,6 @@
+{
+  "displayName": "Hotel Guest",
+  "purpose": "A guest checking in at the hotel.",
+  "defaultLocation": "Lobby",
+  "defaultBot": "chad"
+}
