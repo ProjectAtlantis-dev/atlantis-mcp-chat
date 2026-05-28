@@ -26,12 +26,12 @@ async def game_button() -> Dict[str, Any]:
 async def game_init(game_key: str) -> None:
     """Set up game state on entry. Runs after new/join/rejoin."""
     await atlantis.client_command("/callback list")
-    #await game_video()
+    #await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4")
 
 
 @public
-async def game_video() -> None:
-    """Play the chat background video in the feedback div."""
+async def terminal_video(url: str) -> None:
+    """Play a terminal background video in the feedback div."""
     await atlantis.client_script("""
 (function(){
     var host = document.getElementById('chatFeedback');
@@ -39,27 +39,44 @@ async def game_video() -> None:
     if (document.getElementById('feedbackBgVideo')) return; // idempotent
     var v = document.createElement('video');
     v.id = 'feedbackBgVideo';
-    v.src = 'https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4';
+    v.src = __VIDEO_URL__;
     v.autoplay = true; v.loop = false; v.muted = true; v.playsInline = true;
     v.style.cssText =
       'position:absolute; inset:0; width:100%; height:100%;' +
       'object-fit:cover; z-index:0; pointer-events:none;';
     host.prepend(v);
-    // Lift chat + input above the video
-    var fb = document.getElementById('feedback');
-    var ed = document.getElementById('chatEditorArea');
-    if (fb) { fb.style.position='relative'; fb.style.zIndex='1'; }
-    if (ed) { ed.style.position='relative'; ed.style.zIndex='1'; }
+    // Lift chat, input, and terminal/app chrome above the video.
+    var liftChrome = function(){
+      var ids = ['feedback', 'chatEditorArea', 'terminal-window-wrapper', 'terminal-title-bar'];
+      ids.forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) { el.style.position='relative'; el.style.zIndex='1'; }
+      });
+    };
+    liftChrome();
+    var observer = new MutationObserver(liftChrome);
+    observer.observe(host, { childList:true, subtree:true });
     v.addEventListener('ended', function(){
-      document.removeEventListener('click', unmute);
+      host.removeEventListener('click', toggleMute);
+      observer.disconnect();
       v.remove();
     }, { once: true });
     v.play && v.play();
-    // Unmute on first user click (autoplay requires muted to start)
-    var unmute = function(){ v.muted = false; if (!v.ended && v.play) v.play(); document.removeEventListener('click', unmute); };
-    document.addEventListener('click', unmute);
+    // Start muted for autoplay, then let clicks in the video area toggle audio.
+    var toggleMute = function(e){
+      if (e.target.closest('.chatbox-receiver, .chatbox-sender, #chatEditorArea, #chatButtons, #terminal-title-bar, button, [role="button"], a, input, textarea, select')) return;
+      v.muted = !v.muted;
+      if (!v.ended && v.play) v.play();
+    };
+    host.addEventListener('click', toggleMute);
 })();
-""")
+""".replace("__VIDEO_URL__", json.dumps(url)))
+
+
+@public
+async def game_video() -> None:
+    """Play the default game background video in the terminal."""
+    await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/NuukUnited.mp4")
 
 
 @public
@@ -67,27 +84,42 @@ async def terminal_fade() -> None:
     """Apply frosted styling to terminal feedback bubbles."""
     await atlantis.client_script("""
 (function(){
-  var fb = document.getElementById('feedback');
-  if (!fb) return;
-  if (!document.getElementById('frostStyle')) {
-    var s = document.createElement('style');
-    s.id = 'frostStyle';
-    s.textContent =
-      '#feedback.frosted .chatbox-receiver{' +
-      ' background-image:linear-gradient(to top, rgba(34,34,68,0.35), rgba(17,17,17,0.30)) !important;' +
-      ' -webkit-backdrop-filter:blur(12px) saturate(150%); backdrop-filter:blur(12px) saturate(150%);' +
-      ' border:1px solid rgba(255,255,255,0.18) !important;' +
-      ' box-shadow:0 4px 18px rgba(0,0,0,0.35) !important;}' +
-      '#feedback.frosted .chatbox-sender{' +
-      ' background-color:rgba(255,255,255,0.06) !important;' +
-      ' -webkit-backdrop-filter:blur(12px) brightness(90%) saturate(150%);' +
-      ' backdrop-filter:blur(12px) brightness(90%) saturate(150%);' +
-      ' border:1px solid rgba(255,255,255,0.14) !important;}';
-    document.head.appendChild(s);
-  }
-  if (window.terminalFrostBorderTimer) clearTimeout(window.terminalFrostBorderTimer);
-  fb.classList.add('frosted');
-})();
+    var fb = document.getElementById('feedback');
+    if (!fb) return;
+
+    var styleId = 'frostStyle';
+    if (!document.getElementById(styleId)) {
+      var s = document.createElement('style');
+      s.id = styleId;
+      s.textContent =
+        '#feedback.frosted .chatbox-receiver{' +
+        ' background-image:linear-gradient(to top, rgba(24,24,44,0.24), rgba(10,10,18,0.18)) !important;' +
+        ' background-color:rgba(12,14,24,0.10) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border:1px solid rgba(255,255,255,0.12) !important;' +
+        ' box-shadow:0 4px 14px rgba(0,0,0,0.24) !important;' +
+        '}' +
+
+        '#feedback.frosted .chatbox-sender{' +
+        ' background-image:none !important;' +
+        ' background-color:rgba(12,18,28,0.16) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border:1px solid rgba(255,255,255,0.10) !important;' +
+        ' box-shadow:0 4px 14px rgba(0,0,0,0.22) !important;' +
+        '}';
+
+      document.head.appendChild(s);
+    }
+
+    if (window.terminalFrostBorderTimer) {
+      clearTimeout(window.terminalFrostBorderTimer);
+      window.terminalFrostBorderTimer = null;
+    }
+
+    fb.classList.add('frosted');
+  })();
 """)
 
 
