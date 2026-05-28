@@ -23,6 +23,98 @@ async def game_button() -> Dict[str, Any]:
 
 
 @public
+async def game_init(game_key: str) -> None:
+    """Set up game state on entry. Runs after new/join/rejoin."""
+    await atlantis.client_command("/callback list")
+    #await game_video()
+
+
+@public
+async def game_video() -> None:
+    """Play the chat background video in the feedback div."""
+    await atlantis.client_script("""
+(function(){
+    var host = document.getElementById('chatFeedback');
+    if (!host) return;
+    if (document.getElementById('feedbackBgVideo')) return; // idempotent
+    var v = document.createElement('video');
+    v.id = 'feedbackBgVideo';
+    v.src = 'https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4';
+    v.autoplay = true; v.loop = false; v.muted = true; v.playsInline = true;
+    v.style.cssText =
+      'position:absolute; inset:0; width:100%; height:100%;' +
+      'object-fit:cover; z-index:0; pointer-events:none;';
+    host.prepend(v);
+    // Lift chat + input above the video
+    var fb = document.getElementById('feedback');
+    var ed = document.getElementById('chatEditorArea');
+    if (fb) { fb.style.position='relative'; fb.style.zIndex='1'; }
+    if (ed) { ed.style.position='relative'; ed.style.zIndex='1'; }
+    v.addEventListener('ended', function(){
+      document.removeEventListener('click', unmute);
+      v.remove();
+    }, { once: true });
+    v.play && v.play();
+    // Unmute on first user click (autoplay requires muted to start)
+    var unmute = function(){ v.muted = false; if (!v.ended && v.play) v.play(); document.removeEventListener('click', unmute); };
+    document.addEventListener('click', unmute);
+})();
+""")
+
+
+@public
+async def terminal_fade() -> None:
+    """Apply frosted styling to terminal feedback bubbles."""
+    await atlantis.client_script("""
+(function(){
+  var fb = document.getElementById('feedback');
+  if (!fb) return;
+  if (!document.getElementById('frostStyle')) {
+    var s = document.createElement('style');
+    s.id = 'frostStyle';
+    s.textContent =
+      '#feedback.frosted .chatbox-receiver{' +
+      ' background-image:linear-gradient(to top, rgba(34,34,68,0.35), rgba(17,17,17,0.30)) !important;' +
+      ' -webkit-backdrop-filter:blur(12px) saturate(150%); backdrop-filter:blur(12px) saturate(150%);' +
+      ' border:1px solid rgba(255,255,255,0.18) !important;' +
+      ' box-shadow:0 4px 18px rgba(0,0,0,0.35) !important;}' +
+      '#feedback.frosted .chatbox-sender{' +
+      ' background-color:rgba(255,255,255,0.06) !important;' +
+      ' -webkit-backdrop-filter:blur(12px) brightness(90%) saturate(150%);' +
+      ' backdrop-filter:blur(12px) brightness(90%) saturate(150%);' +
+      ' border:1px solid rgba(255,255,255,0.14) !important;}';
+    document.head.appendChild(s);
+  }
+  if (window.terminalFrostBorderTimer) clearTimeout(window.terminalFrostBorderTimer);
+  fb.classList.add('frosted');
+})();
+""")
+
+
+@public
+async def terminal_restore() -> None:
+    """Remove frosted styling from terminal feedback bubbles."""
+    await atlantis.client_script("""
+(function(){
+  var fb = document.getElementById('feedback');
+  if (window.terminalFrostBorderTimer) clearTimeout(window.terminalFrostBorderTimer);
+  if (fb) fb.classList.remove('frosted');
+  var s = document.getElementById('frostStyle');
+  if (s) s.remove();
+})();
+""")
+
+
+@public
+async def game_background() -> None:
+    """Set the game background image."""
+    await atlantis.set_background(
+        os.path.join(os.path.dirname(__file__), "builder.jpg"),
+        vertical_align="75%",
+    )
+
+
+@public
 async def game_new() -> Dict[str, Any]:
     """Create a new game session"""
     from dynamic_functions.Home.common import create_game_dir, game_dir, _write_json, add_caller_membership
@@ -50,7 +142,8 @@ async def game_new() -> Dict[str, Any]:
     # await atlantis.client_command(f'/callback set chat chat_callback {game_key}')
 
     await atlantis.client_log(f"Game created: {game_key}")
-    await atlantis.set_background(os.path.join(os.path.dirname(__file__), "builder.jpg"), vertical_align="75%")
+    await game_background()
+    await game_init(game_key)
 
     return {
         "game_key": game_key,
@@ -130,6 +223,24 @@ async def game_show(game_key: str) -> dict:
 
 
 @public
+async def game_password(game_key: str, new_password: str) -> None:
+    """Change a game's join password. Only the owner may do this."""
+    from dynamic_functions.Home.common import require_game_dir, _read_json, _write_json
+
+    if not new_password:
+        raise ValueError("new_password required")
+
+    path = require_game_dir(game_key)
+    meta = _read_json(os.path.join(path, 'game.json')) or {}
+    if atlantis.get_caller() != meta.get("owner", ""):
+        raise PermissionError("Only the owner may change the password")
+
+    meta['join_password'] = new_password
+    _write_json(os.path.join(path, 'game.json'), meta)
+    await atlantis.client_log("Password changed")
+
+
+@public
 async def game_join_interactive(game_key: str) -> Dict[str, Any]:
     """Prompt the caller for the join password, then call game_join."""
     from dynamic_functions.Home.modal import modal_string
@@ -149,9 +260,9 @@ async def game_join_interactive(game_key: str) -> Dict[str, Any]:
         return {"cancelled": True}
     return await game_join(game_key, password)
 
-# % game list 
+# % game list
 
-# % game show 
+# % game show
 
 
 
@@ -185,7 +296,8 @@ async def game_join(game_key: str, password: str) -> Dict[str, Any]:
     await atlantis.client_log(
         f"✅ {atlantis.get_caller() or atlantis.get_session_key()} joined game {game_key}"
     )
-    await atlantis.set_background(os.path.join(os.path.dirname(__file__), "builder.jpg"), vertical_align="75%")
+    await game_background()
+    await game_init(game_key)
     return {"game_key": game_key}
 
 
@@ -220,7 +332,8 @@ async def game_rejoin(game_key: str) -> Dict[str, Any]:
     meta['members'] = members
     _write_json(os.path.join(path, 'game.json'), meta)
     await atlantis.client_log(f"✅ {caller_sid} rejoined game {game_key}")
-    await atlantis.set_background(os.path.join(os.path.dirname(__file__), "builder.jpg"), vertical_align="75%")
+    await game_background()
+    await game_init(game_key)
 
     return {"game_key": game_key}
 
