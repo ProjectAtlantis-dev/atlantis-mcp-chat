@@ -29,28 +29,6 @@ from dynamic_functions.Home.location import (
 
 
 # ---------------------------------------------------------------------------
-# Identity — what atlantis hands us for this call
-# ---------------------------------------------------------------------------
-
-@visible
-async def session_show() -> str:
-    """Print the atlantis session key for this call (user_game_id:caller)."""
-    key = atlantis.get_session_key()
-    if not key:
-        raise RuntimeError("No session key in this call context")
-    return key
-
-
-@visible
-async def terminal_show() -> str:
-    """Print the atlantis terminal key for this call (session key + shell)."""
-    key = atlantis.get_terminal_key()
-    if not key:
-        raise RuntimeError("No terminal key in this call context")
-    return key
-
-
-# ---------------------------------------------------------------------------
 # Camera store — terminal_key -> location, per game
 # ---------------------------------------------------------------------------
 
