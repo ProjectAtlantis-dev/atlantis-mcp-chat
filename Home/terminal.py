@@ -17,6 +17,80 @@ async def terminal_video(url: str) -> None:
     )
 
 @public
+async def terminal_glass() -> None:
+    """Apply frosted styling to terminal feedback bubbles."""
+    await atlantis.client_script("""
+(function(){
+    var fb = document.getElementById('feedback');
+    if (!fb) return;
+
+    var styleId = 'frostStyle';
+    if (!document.getElementById(styleId)) {
+      var s = document.createElement('style');
+      s.id = styleId;
+      s.textContent =
+        '#feedback.frosted .chatbox-receiver{' +
+        ' background-image:linear-gradient(to top, rgba(24,24,44,0.24), rgba(10,10,18,0.18)) !important;' +
+        ' background-color:rgba(12,14,24,0.10) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border:1px solid rgba(255,255,255,0.12) !important;' +
+        ' box-shadow:0 4px 14px rgba(0,0,0,0.24) !important;' +
+        '}' +
+
+        '#feedback.frosted .chatbox-sender{' +
+        ' background-image:none !important;' +
+        ' background-color:rgba(12,18,28,0.16) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border:1px solid rgba(255,255,255,0.10) !important;' +
+        ' box-shadow:0 4px 14px rgba(0,0,0,0.22) !important;' +
+        '}' +
+
+        '#feedback.frosted .bot-table-header{' +
+        ' background-color:rgba(8,12,32,0.24) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        '}' +
+
+        '#feedback.frosted .bot-table-cell{' +
+        ' background-color:rgba(7,7,9,0.16) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        '}' +
+
+        '#feedback.frosted .bot-table-row-hover:hover .bot-table-cell{' +
+        ' background-color:rgba(40,50,80,0.28) !important;' +
+        '}' +
+
+        '#feedback.frosted .bot-table-cell.bot-table-cell-selected{' +
+        ' background-color:rgba(45,74,107,0.40) !important;' +
+        '}' +
+
+        'body.terminal-frosted #botTableStickyHeaderShim{' +
+        ' background-color:transparent !important;' +
+        '}' +
+
+        'body.terminal-frosted #botTableStickyHeaderShim .bot-table-header{' +
+        ' background-color:rgba(8,12,32,0.82) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        '}';
+
+      document.head.appendChild(s);
+    }
+
+    if (window.terminalFrostBorderTimer) {
+      clearTimeout(window.terminalFrostBorderTimer);
+      window.terminalFrostBorderTimer = null;
+    }
+
+    fb.classList.add('frosted');
+    document.body.classList.add('terminal-frosted');
+  })();
+""")
+
+@public
 async def terminal_restore() -> None:
     """Remove frosted styling from terminal feedback bubbles."""
     await atlantis.client_script("""
@@ -24,8 +98,23 @@ async def terminal_restore() -> None:
   var fb = document.getElementById('feedback');
   if (window.terminalFrostBorderTimer) clearTimeout(window.terminalFrostBorderTimer);
   if (fb) fb.classList.remove('frosted');
-  var s = document.getElementById('frostStyle');
-  if (s) s.remove();
+  document.body.classList.remove('terminal-frosted');
+  document.querySelectorAll('#frostStyle').forEach(function(s){ s.remove(); });
+
+  // Repair any frost styling left behind by older script versions that wrote
+  // directly to chat bubbles instead of relying only on the stylesheet above.
+  // Do not touch table elements here: their grid lines and optional color
+  // overrides are inline styles created by TableHelper.
+  if (fb) {
+    fb.querySelectorAll('.chatbox-receiver, .chatbox-sender').forEach(function(el){
+      el.style.removeProperty('background-image');
+      el.style.removeProperty('background-color');
+      el.style.removeProperty('-webkit-backdrop-filter');
+      el.style.removeProperty('backdrop-filter');
+      el.style.removeProperty('box-shadow');
+      el.style.removeProperty('border');
+    });
+  }
 })();
 """)
 
