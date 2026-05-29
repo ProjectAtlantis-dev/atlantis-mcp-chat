@@ -24,15 +24,18 @@ async def game_button() -> Dict[str, Any]:
 
 
 @public
-async def game_init(game_key: str) -> None:
-    """Set up game state on entry. Runs after new/join/rejoin."""
+async def game_init():
+    """Create a new game, then capture its keys server-side via the cursor."""
+    keys = await game_new()
+    await atlantis.client_command("/cursor join", keys)
+
     callbacks = await atlantis.client_command("/callback list")
     chat_row = next(row for row in callbacks if row["mode"] == "chat")
 
     if not chat_row["toolPath"]:
         matches = await atlantis.client_command("/tool find chat")
         chat_tool = matches[0]
-        await atlantis.client_command(f"/callback set chat {chat_tool['toolPath']}")
+        await atlantis.client_command(f"/callback set chat {chat_tool['searchTerm']}")
 
         callbacks = await atlantis.client_command("/callback list")
         chat_row = next(row for row in callbacks if row["mode"] == "chat")
@@ -40,6 +43,7 @@ async def game_init(game_key: str) -> None:
     await atlantis.client_log(
         f"chat callback: toolPath={chat_row['toolPath']!r} filename={chat_row['filename']!r}"
     )
+
     #await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4")
 
 
@@ -90,7 +94,6 @@ async def game_new() -> Dict[str, Any]:
 
     await atlantis.client_log(f"Game created: {game_key}")
     await game_background()
-    await game_init(game_key)
 
     return {
         "game_key": game_key,
@@ -243,13 +246,13 @@ async def game_join(game_key: str, password: str) -> Dict[str, Any]:
     await atlantis.client_log(
         f"✅ {atlantis.get_caller() or atlantis.get_session_key()} joined game {game_key}"
     )
-    await game_background()
-    await game_init(game_key)
+    #await game_background()
+    #await game_init(game_key)
     return {"game_key": game_key}
 
 
 @public
-async def game_rejoin(game_key: str) -> Dict[str, Any]:
+async def game_rejoin(game_key: str):
     """Rejoin a game without a password — allowed only if the caller's sid is already a member.
 
     The reconnect path: a returning sid on a fresh session registers that session
@@ -279,10 +282,9 @@ async def game_rejoin(game_key: str) -> Dict[str, Any]:
     meta['members'] = members
     _write_json(os.path.join(path, 'game.json'), meta)
     await atlantis.client_log(f"✅ {caller_sid} rejoined game {game_key}")
-    await game_background()
-    await game_init(game_key)
-
-    return {"game_key": game_key}
+    #await game_background()
+    #await game_init(game_key)
+    #return {"game_key": game_key}
 
 
 @visible
