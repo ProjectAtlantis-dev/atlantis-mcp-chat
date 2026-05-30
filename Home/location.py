@@ -182,6 +182,10 @@ def _location_rows() -> List[Dict[str, str]]:
             'image': image_data,
             'updated': datetime.fromtimestamp(max(mtimes)).strftime('%Y-%m-%d %H:%M'),
         })
+    # A location is a leaf (standable) iff nothing else claims it as a parent.
+    non_leaf = {loc['parent'] for loc in locations if loc['parent']}
+    for loc in locations:
+        loc['is_leaf'] = loc['name'] not in non_leaf
     return locations
 
 @visible

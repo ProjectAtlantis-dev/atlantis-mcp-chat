@@ -304,16 +304,18 @@ async def game_overview(game_key: str) -> None:
 
     uid = uuid.uuid4().hex[:8]
 
-    def _table(entity_id, title, headers, rows, dynamic=False):
-        """Build one entity table"""
+    def _table(entity_id, title, headers, rows, dynamic=False, row_classes=None):
+        """Build one entity table. row_classes, if given, is a per-row CSS class."""
         scoped_id = f"{entity_id}-{uid}"
         cls = f"er-entity-{uid}"
         if dynamic:
             cls += f" er-dynamic-{uid}"
         h = "".join(f"<th>{_esc(c)}</th>" for c in headers)
         body = ""
-        for row in rows:
-            body += "<tr>" + "".join(f"<td>{_esc(v)}</td>" for v in row) + "</tr>"
+        for i, row in enumerate(rows):
+            rc = row_classes[i] if row_classes else ""
+            tr = f'<tr class="{rc}">' if rc else "<tr>"
+            body += tr + "".join(f"<td>{_esc(v)}</td>" for v in row) + "</tr>"
         if not rows:
             body = f'<tr><td colspan="{len(headers)}" style="color:#888;font-style:italic">empty</td></tr>'
         return (
@@ -324,10 +326,11 @@ async def game_overview(game_key: str) -> None:
 
     tables = []
     tables.append(_table("ent-game", "GAME", ["key"], [[game_key]], dynamic=True))
-    tables.append(_table("ent-bot", "BOT", ["sid", "displayName", "model"],
-        [[b["sid"], b["displayName"], b.get("model", "")] for b in bot_rows]))
+    tables.append(_table("ent-bot", "BOT", ["sid", "displayName", "defaultLocation", "model"],
+        [[b["sid"], b["displayName"], b["defaultLocation"], b.get("model", "")] for b in bot_rows]))
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
-        [[l["name"], l["displayName"], l.get("parent", ""), l["connects_to"], _trunc(l.get("description", ""))] for l in loc_rows]))
+        [[l["name"], l["displayName"], l.get("parent", ""), l["connects_to"], _trunc(l.get("description", ""))] for l in loc_rows],
+        row_classes=["" if l["is_leaf"] else f"er-nonleaf-{uid}" for l in loc_rows]))
     tables.append(_table("ent-slot", "SLOTS", ["botSid", "assignment", "currentOccupant", "currentDisplayName", "sessionKey", "startLocation", "currentLocation"],
         [[s["botSid"], s.get("assignment", ""), s.get("currentOccupant", ""), s.get("currentDisplayName", ""), s.get("sessionKey", ""), s.get("startLocation", ""), s.get("currentLocation", "")] for s in slot_rows], dynamic=True))
     tables.append(_table("ent-camera", "CAMERA", ["location", "terminal"],
@@ -418,6 +421,10 @@ async def game_overview(game_key: str) -> None:
   }}
   #er-wrapper-{uid} .er-entity-{uid} tr:last-child td {{
     border-bottom: none;
+  }}
+  #er-wrapper-{uid} .er-nonleaf-{uid} td {{
+    color: #666;
+    font-style: italic;
   }}
   #er-wrapper-{uid} #er-svg-{uid} {{
     position: absolute;
