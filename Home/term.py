@@ -19,7 +19,7 @@ async def term_video(url: str) -> None:
 @public
 async def term_glass() -> None:
     """Apply frosted styling to terminal feedback bubbles."""
-    await atlantis.client_script("""
+    await atlantis.client_terminal_script("""
 (function(){
     var fb = document.getElementById('feedback');
     if (!fb) return;
@@ -93,7 +93,7 @@ async def term_glass() -> None:
 @public
 async def term_restore() -> None:
     """Remove frosted styling from terminal feedback bubbles."""
-    await atlantis.client_script("""
+    await atlantis.client_terminal_script("""
 (function(){
   var fb = document.getElementById('feedback');
   if (window.terminalFrostBorderTimer) clearTimeout(window.terminalFrostBorderTimer);
