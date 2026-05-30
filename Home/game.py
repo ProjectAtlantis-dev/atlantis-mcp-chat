@@ -10,7 +10,7 @@ from dynamic_functions.Home.location import _location_rows
 
 from dynamic_functions.Home.role import _role_rows
 from dynamic_functions.Home.bot import _bot_rows
-from dynamic_functions.Home.terminal import terminal_video
+from dynamic_functions.Home.term import term_video
 
 
 
@@ -42,13 +42,13 @@ async def game_init():
         f"chat callback: toolPath={chat_row['toolPath']!r} filename={chat_row['filename']!r}"
     )
 
-    #await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4")
+    #await term_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4")
 
 
 @public
 async def game_video(video: str) -> None:
     """Play the named game background video in the terminal."""
-    await terminal_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video}")
+    await term_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video}")
 
 
 @public

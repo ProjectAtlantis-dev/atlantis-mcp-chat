@@ -3,7 +3,7 @@
 import atlantis
 
 @public
-async def terminal_video(url: str) -> None:
+async def term_video(url: str) -> None:
     """Play a terminal background video in the feedback div."""
     await atlantis.set_background_video(
         url,
@@ -17,7 +17,7 @@ async def terminal_video(url: str) -> None:
     )
 
 @public
-async def terminal_glass() -> None:
+async def term_glass() -> None:
     """Apply frosted styling to terminal feedback bubbles."""
     await atlantis.client_script("""
 (function(){
@@ -91,7 +91,7 @@ async def terminal_glass() -> None:
 """)
 
 @public
-async def terminal_restore() -> None:
+async def term_restore() -> None:
     """Remove frosted styling from terminal feedback bubbles."""
     await atlantis.client_script("""
 (function(){
@@ -119,7 +119,7 @@ async def terminal_restore() -> None:
 """)
 
 @visible
-async def terminal_show() -> str:
+async def term_show() -> str:
     """Print the atlantis terminal key for this call (session key + shell)."""
     key = atlantis.get_terminal_key()
     if not key:

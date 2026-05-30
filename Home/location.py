@@ -225,7 +225,7 @@ async def location_list() -> List[Dict[str, str]]:
 
 
 
-# camera_look / camera_follow are gone — use terminal.terminal_move(game_key, location)
+# camera_look / camera_follow are gone — use term.term_move(game_key, location)
 # instead. "Terminal at a location" is the only viewing concept now.
 
 # Facility map moved to location_map.py
