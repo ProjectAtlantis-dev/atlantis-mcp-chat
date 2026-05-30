@@ -1,6 +1,5 @@
 {
   "displayName": "Kitty",
-  "purpose": "Greets and checks in arrivals at the front desk.",
   "defaultLocation": "Lobby",
   "provider": "openrouter",
   "model": "z-ai/glm-5",

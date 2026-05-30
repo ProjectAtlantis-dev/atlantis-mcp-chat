@@ -6,10 +6,8 @@ import logging
 from dynamic_functions.Home.chat import (
     analyze_participants, fetch_transcript,
 )
-# TODO: switch to slots — need slot_occupants_at, slot_display_name, is_bot_driven.
-# Prompt assembly now lives in slot.slot_prompt(role, bot, location, speaker_name, ...).
 from dynamic_functions.Home.interactions import record_interaction
-from dynamic_functions.Home.slot import slot_location, slot_occupants_at
+from dynamic_functions.Home.slot import slot_location, slot_occupants_at, slot_prompt
 from dynamic_functions.Home.turn import bot_turn
 
 logger = logging.getLogger("mcp_server")
@@ -71,10 +69,9 @@ async def _handle_chat(game_key: str):
     names = [ch.get("displayName", ch["occupant"]) for ch in occupants]
     await atlantis.client_log(f"\U0001f3e0 Room [{location}]: {', '.join(names)}")
 
-    # TODO: switch to slots — is_bot_driven
     bots_heard = [
         ch for ch in occupants
-        if ch["occupant"] != speaker_sid  # and is_bot_driven(ch["occupant"])
+        if ch["occupant"] != speaker_sid and ch["assignment"] == "ai"
     ]
     if not bots_heard:
         await atlantis.client_log("\U0001f3a4 No bots heard it")
@@ -109,7 +106,7 @@ async def greet_entrant(game_key: str, entrant_sid: str, location: str):
     occupants = slot_occupants_at(game_key, location)
     bots_here = [
         ch for ch in occupants
-        if ch["occupant"] != entrant_sid  # and is_bot_driven(ch["occupant"])
+        if ch["occupant"] != entrant_sid and ch["assignment"] == "ai"
     ]
     if not bots_here:
         return
@@ -134,12 +131,9 @@ async def greet_entrant(game_key: str, entrant_sid: str, location: str):
 
 async def _respond_as_bot(*, game_key: str, bot_record: dict, speaker_sid: str, transcript: list):
     bot_sid = bot_record["occupant"]
-    # TODO: switch to slots — need role + location from slot record
-    # role = slot_role_for(game_key, bot_sid)
-    # location = slot_location(game_key, bot_sid)
-    # speaker_name = slot_display_name(game_key, speaker_sid)
-    # system_prompt = slot_prompt(role, bot_sid, location, speaker_name, ...)
-    system_prompt = ""
+    location = slot_location(game_key, bot_sid)
+    speaker_name = speaker_sid
+    system_prompt = slot_prompt(bot_sid, location, speaker_name)
 
     await bot_turn(
         bot_sid=bot_sid,

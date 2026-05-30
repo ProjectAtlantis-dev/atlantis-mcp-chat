@@ -120,10 +120,6 @@ def _write_json(path: str, data) -> None:
     os.replace(tmp, path)
 
 
-def _roles_dir() -> str:
-    return home_path("Game", "Roles")
-
-
 def _bots_dir() -> str:
     return home_path("Game", "Bots")
 
@@ -136,7 +132,7 @@ def _load_scenario(name: str) -> Dict[str, Any]:
     """Load a scenario roster — Game/Scenarios/<name>.json.
 
     A scenario is the canonical per-game cast: its `slots` maps a slot name
-    (the runtime identity, e.g. "Guest1") to the role that fills it. Raises on
+    to the bot sid that fills it. Raises on
     an unknown scenario or a scenario with no slots — a game cannot be pinned to
     a roster that does not exist.
     """

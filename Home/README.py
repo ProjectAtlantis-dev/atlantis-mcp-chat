@@ -30,12 +30,12 @@ async def README_GAME():
 `GAME.md` was removed because it drifted from the implementation.
 
 Use `game_overview(game_key)` as the source of truth. It renders the live model
-the engine actually uses: game, bots, roles, locations, slots, and cameras.
+the engine actually uses: game, bots, locations, slots, and cameras.
 
-The `SLOTS` table is the important runtime join: one row per role, joined with
+The `SLOTS` table is the important runtime join: one row per bot, joined with
 that game's slot state. Its `assignment` is what the engine branches on:
 `empty`, `ai`, or `human`. A user's session must be bound to a slot before they
-can chat as that role.
+can chat as that bot.
 
 The `CAMERA` table is separate. A user's terminal is bound to a camera location
 so that shell can see what is happening there. The same session can have

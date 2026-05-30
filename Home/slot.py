@@ -1,16 +1,13 @@
-"""Slots — which role each game actor is driving.
+"""Slots — which bot each game actor is driving.
 
-A *slot* is the per-game runtime seat for one role. `_slot_rows` is an outer
-join of static roles with Data/games/<key>/slots.json so every role always has
-one row. The row tells the engine whether the role is empty, AI-driven, or
+A slot is the per-game runtime seat for one bot sid. `_slot_rows` is an outer
+join of static bots with Data/games/<key>/slots.json so every bot always has
+one row. The row tells the engine whether the bot is empty, AI-driven, or
 human-driven.
 
 Users have two independent bindings:
-- their session binds to a slot when they play a role;
+- their session binds to a slot when they drive a bot;
 - each terminal binds to a camera when that shell watches a location.
-
-AI prompt variants still live under Game/Slots/<role>_<bot>/, but that directory
-is prompt/config material for an AI assignment, not the slot identity itself.
 """
 
 import atlantis
@@ -21,12 +18,12 @@ from typing import Any, Dict, List
 from dynamic_functions.Home.common import (
     _read_json,
     _write_json,
-    _roles_dir,
     home_path,
+    _bots_dir,
     require_game_dir,
     require_membership,
 )
-from dynamic_functions.Home.role import role_entry_location
+from dynamic_functions.Home.bot import bot_entry_location
 
 
 def _slots_path(game_key: str) -> str:
@@ -41,8 +38,8 @@ def _save_slots(game_key: str, slots: Dict[str, Dict[str, Any]]) -> None:
     _write_json(_slots_path(game_key), slots)
 
 
-def _list_role_keys() -> List[str]:
-    d = _roles_dir()
+def _list_bot_sids() -> List[str]:
+    d = _bots_dir()
     if not os.path.isdir(d):
         return []
     return sorted(
@@ -52,8 +49,8 @@ def _list_role_keys() -> List[str]:
     )
 
 
-def _role_config(role: str) -> Dict[str, Any]:
-    p = os.path.join(_roles_dir(), role, "config.json")
+def _bot_config(bot_sid: str) -> Dict[str, Any]:
+    p = os.path.join(_bots_dir(), bot_sid, "config.json")
     return _read_json(p, {}) or {}
 
 
@@ -69,16 +66,16 @@ def _slot_assignment(state: Dict[str, Any]) -> str:
 
 
 def _slot_rows(game_key: str) -> List[Dict[str, Any]]:
-    """Pure data: role outer join with live slot state. No client side effects."""
+    """Pure data: bot outer join with live slot state. No client side effects."""
     live = _load_slots(game_key)
     rows: List[Dict[str, Any]] = []
-    for role in _list_role_keys():
-        cfg = _role_config(role)
-        state = live.get(role, {})
+    for bot_sid in _list_bot_sids():
+        cfg = _bot_config(bot_sid)
+        state = live.get(bot_sid, {})
         start = str(cfg.get("defaultLocation", "") or "")
         rows.append({
-            "role": role,
-            "roleDisplayName": cfg.get("displayName", role),
+            "botSid": bot_sid,
+            "displayName": cfg.get("displayName", bot_sid),
             "assignment": _slot_assignment(state),
             "currentOccupant": state.get("currentOccupant", ""),
             "currentDisplayName": state.get("currentDisplayName", ""),
@@ -100,7 +97,7 @@ def slot_occupants_at(game_key: str, location: str) -> List[Dict[str, Any]]:
         out.append({
             "occupant": row["currentOccupant"],
             "displayName": row["currentDisplayName"] or row["currentOccupant"],
-            "role": row["role"],
+            "botSid": row["botSid"],
             "assignment": row["assignment"],
         })
     return out
@@ -113,14 +110,14 @@ def slot_location(game_key: str, sid: str) -> str:
     for row in _slot_rows(game_key):
         if row["currentOccupant"] == sid:
             if not row["currentLocation"]:
-                raise ValueError(f"{sid!r} is bound to {row['role']!r} but has not been spawned into a location")
+                raise ValueError(f"{sid!r} is bound to {row['botSid']!r} but has not been spawned into a location")
             return row["currentLocation"]
     raise ValueError(f"no slot found for occupant {sid!r}")
 
 
 @public
 async def slot_list(game_key: str) -> List[Dict[str, Any]]:
-    """Show runtime slots — one row per role."""
+    """Show runtime slots — one row per bot."""
     require_membership(game_key)
     rows = _slot_rows(game_key)
     await atlantis.client_data("Slots", rows)
@@ -135,16 +132,16 @@ async def _render_slots(game_key: str) -> List[Dict[str, Any]]:
 
 
 @visible
-async def slot_bind(game_key: str, role: str) -> Dict[str, str]:
-    """Bind the calling session to a role slot.
+async def slot_bind(game_key: str, bot_sid: str) -> Dict[str, str]:
+    """Bind the calling session to a bot slot.
 
     This is the session-side counterpart to `camera_bind`: a session controls
-    what role the user can chat as, while each terminal separately controls
+    which bot the user can chat as, while each terminal separately controls
     what location that shell is watching.
     """
     require_membership(game_key)
-    if role not in _list_role_keys():
-        raise ValueError(f"Unknown role: {role}")
+    if bot_sid not in _list_bot_sids():
+        raise ValueError(f"Unknown bot: {bot_sid}")
 
     session_key = atlantis.get_session_key()
     if not session_key:
@@ -154,18 +151,18 @@ async def slot_bind(game_key: str, role: str) -> Dict[str, str]:
 
     slots = _load_slots(game_key)
 
-    for slot_role, state in list(slots.items()):
-        if slot_role != role and state.get("sessionKey") == session_key:
+    for slot_bot_sid, state in list(slots.items()):
+        if slot_bot_sid != bot_sid and state.get("sessionKey") == session_key:
             state.pop("sessionKey", None)
             state.pop("currentDisplayName", None)
             state.pop("currentLocation", None)
             state["assignment"] = "empty"
             state["currentOccupant"] = ""
 
-    state = slots.setdefault(role, {})
+    state = slots.setdefault(bot_sid, {})
     existing_session = state.get("sessionKey")
     if existing_session and existing_session != session_key:
-        raise ValueError(f"Role {role!r} is already bound to another session")
+        raise ValueError(f"Bot {bot_sid!r} is already bound to another session")
 
     state.update({
         "assignment": "human",
@@ -177,7 +174,7 @@ async def slot_bind(game_key: str, role: str) -> Dict[str, str]:
 
     await _render_slots(game_key)
     return {
-        "role": role,
+        "botSid": bot_sid,
         "assignment": "human",
         "currentOccupant": caller,
         "sessionKey": session_key,
@@ -189,8 +186,8 @@ async def slot_bind(game_key: str, role: str) -> Dict[str, str]:
 async def slot_spawn(game_key: str, location: str = "") -> Dict[str, str]:
     """Place the calling session's bound slot into a location.
 
-    Spawn is separate from bind: binding says which role you play, spawning
-    puts that role into the world. If `location` is omitted, the role's
+    Spawn is separate from bind: binding says which bot you drive, spawning
+    puts that bot into the world. If `location` is omitted, the bot's
     defaultLocation is used.
     """
     require_membership(game_key)
@@ -200,38 +197,30 @@ async def slot_spawn(game_key: str, location: str = "") -> Dict[str, str]:
         raise RuntimeError("No session key in this call context")
 
     slots = _load_slots(game_key)
-    bound_role = next(
-        (role for role, state in slots.items() if state.get("sessionKey") == session_key),
+    bound_bot_sid = next(
+        (bot_sid for bot_sid, state in slots.items() if state.get("sessionKey") == session_key),
         None,
     )
-    if not bound_role:
+    if not bound_bot_sid:
         raise ValueError("This session is not bound to any slot — call slot_bind first")
 
-    target = location or role_entry_location(bound_role)
-    slots[bound_role]["currentLocation"] = target
+    target = location or bot_entry_location(bound_bot_sid)
+    slots[bound_bot_sid]["currentLocation"] = target
     _save_slots(game_key, slots)
 
-    display = slots[bound_role].get("currentDisplayName") or slots[bound_role].get("currentOccupant", "")
+    display = slots[bound_bot_sid].get("currentDisplayName") or slots[bound_bot_sid].get("currentOccupant", "")
     await atlantis.client_log(f"{display} has entered the {target}")
     await _render_slots(game_key)
-    return {"role": bound_role, "currentLocation": target}
+    return {"botSid": bound_bot_sid, "currentLocation": target}
 
 
 # ---------------------------------------------------------------------------
-# Prompt assembly — AI role assignments use per-(role, bot) prompt material.
+# Prompt assembly.
 # ---------------------------------------------------------------------------
 
-def _slot_key(role: str, bot: str) -> str:
-    return f"{role}_{bot}"
-
-
-def _slot_dir(role: str, bot: str) -> str:
-    return home_path("Game", "Slots", _slot_key(role, bot))
-
-
-def load_slot_prompt(role: str, bot: str) -> str:
-    """Read the static consolidated prompt.md for a role-specific bot prompt."""
-    path = os.path.join(_slot_dir(role, bot), "prompt.md")
+def load_bot_prompt(bot_sid: str) -> str:
+    """Read a bot's prompt.md."""
+    path = os.path.join(home_path("Game", "Bots", bot_sid), "prompt.md")
     with open(path, "r", encoding="utf-8") as f:
         return f.read().strip()
 
@@ -283,16 +272,15 @@ def build_interaction_context(
 
 
 def slot_prompt(
-    role: str,
-    bot: str,
+    bot_sid: str,
     location: str = "",
     speaker_name: str = "",
     prior_interaction_count: int = 0,
     last_interaction_at: str = "",
 ) -> str:
-    """Assemble the full system prompt for an AI-driven role.
+    """Assemble the full system prompt for an AI-driven bot.
 
-    Static character/appearance/role text comes from Game/Slots/<role>_<bot>/;
+    Static character/appearance text comes from Game/Bots/<sid>/prompt.md;
     the setting, current time, and interaction history are layered on at runtime.
     """
     from dynamic_functions.Home.location import location_compose_descriptions
@@ -303,7 +291,7 @@ def slot_prompt(
     if setting:
         parts.append(f"## Setting\n\n{setting}")
 
-    parts.append(load_slot_prompt(role, bot))
+    parts.append(load_bot_prompt(bot_sid))
     parts.append(f"## Current Time\n\n{datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
     note = build_interaction_context(

@@ -8,7 +8,6 @@ from typing import Dict, Any
 
 from dynamic_functions.Home.location import _location_rows
 
-from dynamic_functions.Home.role import _role_rows
 from dynamic_functions.Home.bot import _bot_rows
 from dynamic_functions.Home.term import term_video
 
@@ -284,7 +283,7 @@ async def game_rejoin(game_key: str):
 
 @visible
 async def game_overview(game_key: str) -> None:
-    """Show the game state diagram — bots, roles, locations, slots, and cameras."""
+    """Show the game state diagram — bots, locations, slots, and cameras."""
     from dynamic_functions.Home.common import require_membership
     from dynamic_functions.Home.slot import _slot_rows
     from dynamic_functions.Home.camera import _camera_rows
@@ -292,7 +291,6 @@ async def game_overview(game_key: str) -> None:
 
     bot_rows = _bot_rows()
     loc_rows = _location_rows()
-    role_rows = _role_rows()
     slot_rows = _slot_rows(game_key)
     camera_rows = _camera_rows(game_key)
 
@@ -330,10 +328,8 @@ async def game_overview(game_key: str) -> None:
         [[b["sid"], b["displayName"], b.get("model", "")] for b in bot_rows]))
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
         [[l["name"], l["displayName"], l.get("parent", ""), l["connects_to"], _trunc(l.get("description", ""))] for l in loc_rows]))
-    tables.append(_table("ent-role", "ROLE", ["name", "displayName", "model", "defaultLocation", "purpose"],
-        [[r["name"], r["displayName"], r.get("model", ""), r.get("defaultLocation", ""), _trunc(r.get("purpose", ""))] for r in role_rows]))
-    tables.append(_table("ent-slot", "SLOTS", ["role", "assignment", "currentOccupant", "currentDisplayName", "sessionKey", "startLocation", "currentLocation"],
-        [[s["role"], s.get("assignment", ""), s.get("currentOccupant", ""), s.get("currentDisplayName", ""), s.get("sessionKey", ""), s.get("startLocation", ""), s.get("currentLocation", "")] for s in slot_rows], dynamic=True))
+    tables.append(_table("ent-slot", "SLOTS", ["botSid", "assignment", "currentOccupant", "currentDisplayName", "sessionKey", "startLocation", "currentLocation"],
+        [[s["botSid"], s.get("assignment", ""), s.get("currentOccupant", ""), s.get("currentDisplayName", ""), s.get("sessionKey", ""), s.get("startLocation", ""), s.get("currentLocation", "")] for s in slot_rows], dynamic=True))
     tables.append(_table("ent-camera", "CAMERA", ["location", "terminal"],
         [[c["location"], c["terminal"]] for c in camera_rows], dynamic=True))
 
@@ -341,8 +337,8 @@ async def game_overview(game_key: str) -> None:
     relationships = [
         (f"ent-location-{uid}", f"ent-location-{uid}", "connects to"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "parent"),
-        (f"ent-location-{uid}", f"ent-role-{uid}", "defaultLocation"),
-        (f"ent-role-{uid}", f"ent-slot-{uid}", "startLocation"),
+        (f"ent-location-{uid}", f"ent-bot-{uid}", "defaultLocation"),
+        (f"ent-bot-{uid}", f"ent-slot-{uid}", "botSid"),
         (f"ent-game-{uid}", f"ent-slot-{uid}", "game_key"),
         (f"ent-location-{uid}", f"ent-camera-{uid}", "location"),
     ]

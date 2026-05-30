@@ -1,7 +1,6 @@
 {
-  "displayName": "Taffy",
-  "purpose": "Runs the break-room espresso bar and roams with caffeine.",
-  "defaultLocation": "Kitchen",
+  "displayName": "Chad",
+  "defaultLocation": "Lobby",
   "provider": "openrouter",
   "model": "z-ai/glm-5",
   "baseUrl": "https://openrouter.ai/api/v1",

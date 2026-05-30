@@ -1,0 +1,133 @@
+"""Bot tools
+
+A bot is the canonical character/persona/engine unit. Its primary key is the
+folder name `sid` under Game/Bots/<sid>/. Prompt, image, default location, and
+model settings all live on the bot.
+"""
+
+import atlantis
+import base64
+import json
+import logging
+import os
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from dynamic_functions.Home.common import _bots_dir, _ensure_thumb
+from dynamic_functions.Home.location import _leaf_location_keys
+
+logger = logging.getLogger("mcp_server")
+
+
+def _load_bot_json(bot_sid: str) -> dict:
+    """Read a bot config."""
+    config_path = os.path.join(_bots_dir(), bot_sid, "config.json")
+    if os.path.isfile(config_path):
+        with open(config_path) as f:
+            return json.load(f)
+    return {}
+
+
+def _load_bot_prompt(bot_sid: str) -> str:
+    """Read a bot prompt."""
+    prompt_path = os.path.join(_bots_dir(), bot_sid, "prompt.md")
+    if os.path.isfile(prompt_path):
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    return ""
+
+
+def _validate_default_location(bot_sid: str, location: str) -> None:
+    """Validate a bot defaultLocation against standable location keys."""
+    if not location:
+        return
+    valid_locations = set(_leaf_location_keys())
+    if location not in valid_locations:
+        valid = ", ".join(sorted(valid_locations)) or "none"
+        raise ValueError(
+            f"Bot {bot_sid!r} has invalid defaultLocation {location!r}. "
+            f"Expected one of: {valid}"
+        )
+
+
+def _bot_rows() -> List[Dict[str, Any]]:
+    """Pure data: list available bots. No client side effects."""
+    bots_dir = _bots_dir()
+    bots: List[Dict[str, Any]] = []
+    if not os.path.isdir(bots_dir):
+        return bots
+    for entry in sorted(os.listdir(bots_dir)):
+        entry_dir = os.path.join(bots_dir, entry)
+        if not os.path.isdir(entry_dir) or entry.startswith(".") or entry == "__pycache__":
+            continue
+        bot_data = _load_bot_json(entry)
+        mtimes = []
+        for sub_root, _dirs, sub_files in os.walk(entry_dir):
+            for filename in sub_files:
+                mtimes.append(os.path.getmtime(os.path.join(sub_root, filename)))
+        updated = datetime.fromtimestamp(max(mtimes)).strftime('%Y-%m-%d %H:%M') if mtimes else ''
+
+        provider = bot_data.get("provider", "")
+        model = bot_data.get("model", "")
+        model_label = f"{provider}: {model}" if provider and model else (model or provider)
+        default_location = str(bot_data.get("defaultLocation", "") or "")
+        _validate_default_location(entry, default_location)
+
+        image_data = ""
+        image_file = bot_data.get("image", "")
+        if image_file:
+            image_path = os.path.join(entry_dir, image_file)
+            if os.path.isfile(image_path):
+                thumb = _ensure_thumb(image_path)
+                if thumb:
+                    ext = os.path.splitext(thumb)[1].lower().lstrip(".")
+                    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
+                    with open(thumb, "rb") as img:
+                        b64 = base64.b64encode(img.read()).decode("ascii")
+                    image_data = f"data:image/{mime};base64,{b64}"
+
+        bots.append({
+            "sid": entry,
+            "displayName": bot_data.get("displayName", entry),
+            "image": image_data,
+            "defaultLocation": default_location,
+            "prompt": _load_bot_prompt(entry),
+            "model": model_label,
+            "updated": updated,
+        })
+    return bots
+
+
+@public
+async def bot_list() -> List[Dict[str, Any]]:
+    """List bots — config metadata only."""
+    bots = _bot_rows()
+    await atlantis.client_data("Bots", bots, column_formatter={
+        "prompt": {"type": "markdown", "maxWidth": "80ch"},
+    })
+    return bots
+
+
+def bot_default_location(bot_sid: str) -> Optional[str]:
+    """Return a bot-specific default location from config.json, if set."""
+    location = _load_bot_json(bot_sid).get("defaultLocation", "")
+    default_location = str(location).strip()
+    _validate_default_location(bot_sid, default_location)
+    return default_location or None
+
+
+def bot_entry_location(bot_sid: str) -> str:
+    """Return the entry location for a bot, or raise if not configured."""
+    location = bot_default_location(bot_sid)
+    if not location:
+        raise ValueError(
+            f"No defaultLocation configured for bot {bot_sid!r}. "
+            f"Set defaultLocation in the bot config.json."
+        )
+    return location
+
+
+def _validate_bot(bot_sid: str) -> None:
+    """Validate a bot folder."""
+    if not os.path.isdir(os.path.join(_bots_dir(), bot_sid)):
+        raise ValueError(f"Bot folder not found: {bot_sid}")

@@ -1,7 +1,6 @@
 {
-  "displayName": "Natalie",
-  "purpose": "Oversees staff and handles escalations.",
-  "defaultLocation": "Hallway",
+  "displayName": "Sven",
+  "defaultLocation": "SecurityOffice",
   "provider": "openrouter",
   "model": "z-ai/glm-5",
   "baseUrl": "https://openrouter.ai/api/v1",

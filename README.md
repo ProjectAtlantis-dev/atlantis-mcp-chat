@@ -6,12 +6,12 @@ The MCP loader will publish functions according to the various decorators. These
 
 The /Data folder holds live data for each game
 
-The /Game folder is static assets - Bots, Roles, Locations etc
+The /Game folder is static assets - Bots, Locations etc
 
-Slot = when user binds their id (sid) to a Role, usually to assume a human role e.g. Guest. Any game can have a mix of humans or bots.
+Bot = a character/persona/engine unit. The bot primary key is its sid.
+Slot = when user binds their id (sid) to a Bot. Any game can have a mix of humans or bots.
 Camera = when user binds their browser (terminal) to a Location. Cameras can also move with Slots.
 
 Bot responses can be triggered by chat or tick.
 
 Chat callback must pull transcript and figure out where chat happened, who spoke, and who was listening if anyone, then decide who should respond. If a bot should respond, then send the package off to Open Router or whatever.
-
