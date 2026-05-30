@@ -16,11 +16,9 @@ from dynamic_functions.Home.terminal import terminal_video
 
 @button("New Chat")
 @public
-async def game_button() -> Dict[str, Any]:
+async def game_button():
     """Create a new chat session"""
-    settings = await atlantis.client_command("@game_new")
-    #await atlantis.client_command("cursor join")
-    return settings
+    settings = await atlantis.client_command("@game_init")
 
 
 @public
@@ -48,12 +46,9 @@ async def game_init():
 
 
 @public
-async def game_video() -> None:
-    """Play the default game background video in the terminal."""
-    #await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/NuukUnited.mp4")
-    await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4")
-    #await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_widescreen.mp4")
-    #await terminal_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/thunderbirds.mp4")
+async def game_video(video: str) -> None:
+    """Play the named game background video in the terminal."""
+    await terminal_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video}")
 
 
 @public
