@@ -19,7 +19,6 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from dynamic_functions.Home.common import (
-    _load_bot_config,
     _read_json,
     _write_json,
     _roles_dir,
@@ -58,21 +57,13 @@ def _role_config(role: str) -> Dict[str, Any]:
     return _read_json(p, {}) or {}
 
 
-def _bot_display_name(bot_sid: str) -> str:
-    loaded = _load_bot_config(bot_sid)
-    if loaded:
-        cfg, _ = loaded
-        return cfg.get("displayName", bot_sid)
-    return bot_sid
-
-
-def _slot_assignment(state: Dict[str, Any], default_occupant: str) -> str:
+def _slot_assignment(state: Dict[str, Any]) -> str:
     """Return the engine assignment for a slot: empty, ai, or human."""
     if state.get("assignment") in {"empty", "ai", "human"}:
         return str(state["assignment"])
     if state.get("sessionKey"):
         return "human"
-    if state.get("currentOccupant") or default_occupant:
+    if state.get("currentOccupant"):
         return "ai"
     return "empty"
 
@@ -84,16 +75,12 @@ def _slot_rows(game_key: str) -> List[Dict[str, Any]]:
     for role in _list_role_keys():
         cfg = _role_config(role)
         state = live.get(role, {})
-        default_occ = str(cfg.get("defaultBot", "") or "")
-        current_occ = state.get("currentOccupant", "")
         start = str(cfg.get("defaultLocation", "") or "")
         rows.append({
             "role": role,
             "roleDisplayName": cfg.get("displayName", role),
-            "assignment": _slot_assignment(state, default_occ),
-            "defaultOccupant": default_occ,
-            "defaultDisplayName": _bot_display_name(default_occ) if default_occ else "",
-            "currentOccupant": current_occ,
+            "assignment": _slot_assignment(state),
+            "currentOccupant": state.get("currentOccupant", ""),
             "currentDisplayName": state.get("currentDisplayName", ""),
             "sessionKey": state.get("sessionKey", ""),
             "startLocation": start,

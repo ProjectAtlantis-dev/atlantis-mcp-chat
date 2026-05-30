@@ -128,6 +128,27 @@ def _bots_dir() -> str:
     return home_path("Game", "Bots")
 
 
+def _scenarios_dir() -> str:
+    return home_path("Game", "Scenarios")
+
+
+def _load_scenario(name: str) -> Dict[str, Any]:
+    """Load a scenario roster — Game/Scenarios/<name>.json.
+
+    A scenario is the canonical per-game cast: its `slots` maps a slot name
+    (the runtime identity, e.g. "Guest1") to the role that fills it. Raises on
+    an unknown scenario or a scenario with no slots — a game cannot be pinned to
+    a roster that does not exist.
+    """
+    path = os.path.join(_scenarios_dir(), f"{_safe_id(name, 'scenario')}.json")
+    data = _read_json(path)
+    if data is None:
+        raise ValueError(f"Unknown scenario: {name!r}")
+    if not data.get("slots"):
+        raise ValueError(f"Scenario {name!r} has no slots")
+    return data
+
+
 def _load_bot_config(bot_sid: str) -> Optional[Tuple[Dict[str, Any], str]]:
     """Load a bot config — folder name is the sid"""
     bot_dir = os.path.join(_bots_dir(), bot_sid)

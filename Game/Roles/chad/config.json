@@ -1,0 +1,10 @@
+{
+  "displayName": "Chad",
+  "purpose": "A guest checking in at the hotel.",
+  "defaultLocation": "Lobby",
+  "provider": "openrouter",
+  "model": "z-ai/glm-5",
+  "baseUrl": "https://openrouter.ai/api/v1",
+  "apiKeyEnv": "OPENROUTER_API_KEY",
+  "image": "image.png"
+}

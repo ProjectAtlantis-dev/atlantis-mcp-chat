@@ -330,10 +330,10 @@ async def game_overview(game_key: str) -> None:
         [[b["sid"], b["displayName"], b.get("model", "")] for b in bot_rows]))
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
         [[l["name"], l["displayName"], l.get("parent", ""), l["connects_to"], _trunc(l.get("description", ""))] for l in loc_rows]))
-    tables.append(_table("ent-role", "ROLE", ["name", "displayName", "defaultBot", "defaultLocation", "purpose"],
-        [[r["name"], r["displayName"], r.get("defaultBot", ""), r.get("defaultLocation", ""), _trunc(r.get("purpose", ""))] for r in role_rows]))
-    tables.append(_table("ent-slot", "SLOTS", ["role", "assignment", "defaultOccupant", "defaultDisplayName", "currentOccupant", "currentDisplayName", "sessionKey", "startLocation", "currentLocation"],
-        [[s["role"], s.get("assignment", ""), s.get("defaultOccupant", ""), s.get("defaultDisplayName", ""), s.get("currentOccupant", ""), s.get("currentDisplayName", ""), s.get("sessionKey", ""), s.get("startLocation", ""), s.get("currentLocation", "")] for s in slot_rows], dynamic=True))
+    tables.append(_table("ent-role", "ROLE", ["name", "displayName", "model", "defaultLocation", "purpose"],
+        [[r["name"], r["displayName"], r.get("model", ""), r.get("defaultLocation", ""), _trunc(r.get("purpose", ""))] for r in role_rows]))
+    tables.append(_table("ent-slot", "SLOTS", ["role", "assignment", "currentOccupant", "currentDisplayName", "sessionKey", "startLocation", "currentLocation"],
+        [[s["role"], s.get("assignment", ""), s.get("currentOccupant", ""), s.get("currentDisplayName", ""), s.get("sessionKey", ""), s.get("startLocation", ""), s.get("currentLocation", "")] for s in slot_rows], dynamic=True))
     tables.append(_table("ent-camera", "CAMERA", ["location", "terminal"],
         [[c["location"], c["terminal"]] for c in camera_rows], dynamic=True))
 
@@ -342,8 +342,6 @@ async def game_overview(game_key: str) -> None:
         (f"ent-location-{uid}", f"ent-location-{uid}", "connects to"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "parent"),
         (f"ent-location-{uid}", f"ent-role-{uid}", "defaultLocation"),
-        (f"ent-bot-{uid}", f"ent-role-{uid}", "defaultBot"),
-        (f"ent-role-{uid}", f"ent-slot-{uid}", "defaultBot"),
         (f"ent-role-{uid}", f"ent-slot-{uid}", "startLocation"),
         (f"ent-game-{uid}", f"ent-slot-{uid}", "game_key"),
         (f"ent-location-{uid}", f"ent-camera-{uid}", "location"),

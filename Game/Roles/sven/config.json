@@ -1,0 +1,10 @@
+{
+  "displayName": "Sven",
+  "purpose": "Watches the cameras and patrols the facility.",
+  "defaultLocation": "SecurityOffice",
+  "provider": "openrouter",
+  "model": "z-ai/glm-5",
+  "baseUrl": "https://openrouter.ai/api/v1",
+  "apiKeyEnv": "OPENROUTER_API_KEY",
+  "image": "image.jpg"
+}
