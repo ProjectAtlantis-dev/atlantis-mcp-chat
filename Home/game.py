@@ -377,6 +377,7 @@ async def game_rejoin(game_key: str):
 async def game_overview(game_key: str) -> None:
     """Show the game state diagram — scenes, roster, bots, locations, and cameras."""
     from dynamic_functions.Home.camera import _camera_rows
+    from dynamic_functions.Home.roster import _number_duplicate_display_names, _scene_roster_rows
     from dynamic_functions.Home.scene import _load_scene, _scene_names
     data_dir = require_membership(game_key)
 
@@ -390,16 +391,14 @@ async def game_overview(game_key: str) -> None:
         {"name": scene, "slots": len(_load_scene(scene))}
         for scene in scene_names
     ]
-    selected_scene_rows = []
-    if roster_scene:
-        selected_scene_rows = [
-            {"key": slot.get("key", ""), "bot_sid": slot.get("bot_sid", "")}
-            for slot in _load_scene(roster_scene)
-        ]
-    roster_path = os.path.join(data_dir, "roster.json")
-    roster_rows = _read_json(roster_path, []) if os.path.isfile(roster_path) else []
-    if not isinstance(roster_rows, list):
-        roster_rows = []
+    roster_rows = []
+    for scene_name in scene_names:
+        scene_roster_rows = _scene_roster_rows(scene_name)
+        _number_duplicate_display_names(scene_roster_rows)
+        roster_rows.extend({
+            "scene_name": scene_name,
+            **row,
+        } for row in scene_roster_rows)
 
     # Build an HTML table
     def _trunc(s, n=40):
@@ -436,15 +435,11 @@ async def game_overview(game_key: str) -> None:
     tables = []
     tables.append(_table("ent-game", "GAME", ["key", "roster_scene"], [[game_key, roster_scene]], dynamic=True))
     tables.append(_table("ent-scene", "SCENE", ["name", "slots"],
-        [[s["name"], s["slots"]] for s in scene_rows],
-        tone="green"))
-    tables.append(_table("ent-selected-scene", roster_scene or "SELECTED SCENE", ["key", "bot_sid"],
-        [[s["key"], s["bot_sid"]] for s in selected_scene_rows],
-        tone="orange"))
-    tables.append(_table("ent-roster", "ROSTER", ["key", "displayName", "bot_sid", "ai"],
-        [[r.get("key", ""), r.get("displayName", ""), r.get("bot_sid", ""), r.get("ai", "")] for r in roster_rows],
+        [[s["name"], s["slots"]] for s in scene_rows]))
+    tables.append(_table("ent-roster", "ROSTER", ["scene_name", "key", "displayName", "bot_sid", "ai"],
+        [[r.get("scene_name", ""), r.get("key", ""), r.get("displayName", ""), r.get("bot_sid", ""), r.get("ai", "")] for r in roster_rows],
         dynamic=True,
-        tone="orange"))
+        tone="green"))
     tables.append(_table("ent-bot", "BOT", ["sid", "displayName", "defaultLocation", "model"],
         [[b["sid"], b["displayName"], b["defaultLocation"], b.get("model", "")] for b in bot_rows]))
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
@@ -455,10 +450,9 @@ async def game_overview(game_key: str) -> None:
 
     # Relationships
     relationships = [
-        (f"ent-game-{uid}", f"ent-scene-{uid}", "roster scene"),
-        (f"ent-scene-{uid}", f"ent-selected-scene-{uid}", "name"),
-        (f"ent-selected-scene-{uid}", f"ent-bot-{uid}", "bot_sid"),
-        (f"ent-roster-{uid}", f"ent-selected-scene-{uid}", "key"),
+        (f"ent-game-{uid}", f"ent-roster-{uid}", "has roster"),
+        (f"ent-game-{uid}", f"ent-camera-{uid}", "has cameras"),
+        (f"ent-roster-{uid}", f"ent-scene-{uid}", "scene_name"),
         (f"ent-roster-{uid}", f"ent-bot-{uid}", "bot_sid"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "connects to"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "parent"),

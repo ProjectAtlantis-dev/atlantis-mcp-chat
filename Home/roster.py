@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from dynamic_functions.Home.bot import load_bot
 from dynamic_functions.Home.common import _read_json, _write_json
 from dynamic_functions.Home.game import require_membership
-from dynamic_functions.Home.scene import _load_scene, _scene_name
+from dynamic_functions.Home.scene import _load_scene, _scene_name, _scene_names
 
 
 def _number_duplicate_display_names(rows: List[Dict[str, Any]]) -> None:
@@ -66,6 +66,21 @@ def _load_game_roster(game_key: str) -> List[Dict[str, Any]]:
     rows = _read_json(roster_path)
     if not isinstance(rows, list):
         raise ValueError(f"Game {game_key!r} roster.json must be a JSON array")
+    return rows
+
+
+@public
+async def roster_list() -> List[Dict[str, Any]]:
+    """Show all generated roster rows, grouped by source scene filename."""
+    rows: List[Dict[str, Any]] = []
+    for scene_name in _scene_names():
+        scene_rows = _scene_roster_rows(scene_name)
+        _number_duplicate_display_names(scene_rows)
+        rows.extend({
+            "scene_name": scene_name,
+            **row,
+        } for row in scene_rows)
+    await atlantis.client_data("Rosters", rows)
     return rows
 
 
