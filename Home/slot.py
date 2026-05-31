@@ -225,63 +225,14 @@ def load_bot_prompt(bot_sid: str) -> str:
         return f.read().strip()
 
 
-def build_interaction_context(
-    caller: str,
-    prior_interaction_count: int,
-    last_interaction_at: str,
-    first_name: str = "",
-) -> str:
-    """Note describing how well the bot knows this caller and when they last spoke."""
-    if not caller:
-        return ""
-
-    display_name = first_name or caller
-
-    hour = datetime.now().hour
-    late_night = hour >= 22 or hour < 5
-
-    if prior_interaction_count <= 0:
-        if late_night:
-            note = f"This is your first interaction with {display_name}. It's late — welcome them warmly."
-        else:
-            note = f"This is your first interaction with {display_name}. Introduce yourself and help them get oriented."
-    elif prior_interaction_count == 1:
-        note = f"You have interacted with {display_name} once before. Greet them like someone you remember, but don't overdo it."
-    elif prior_interaction_count <= 5:
-        note = f"You have interacted with {display_name} {prior_interaction_count} times before. They're still fairly new — keep context light."
-    else:
-        note = f"You have interacted with {display_name} {prior_interaction_count} times before. They're familiar — skip the intros and be casual."
-
-    if last_interaction_at and prior_interaction_count > 0:
-        try:
-            elapsed = datetime.now() - datetime.fromisoformat(last_interaction_at)
-            days = elapsed.days
-            hours = elapsed.seconds // 3600
-            if days > 30:
-                note += f" It has been about {days // 30} month(s) since your last interaction — maybe acknowledge it's been a while."
-            elif days > 0:
-                note += f" It has been about {days} day(s) since your last interaction."
-            elif hours > 0:
-                note += f" Your last interaction was about {hours} hour(s) ago."
-            else:
-                note += " Your last interaction was moments ago."
-        except (ValueError, TypeError):
-            pass
-
-    return note
-
-
 def slot_prompt(
     bot_sid: str,
     location: str = "",
-    speaker_name: str = "",
-    prior_interaction_count: int = 0,
-    last_interaction_at: str = "",
 ) -> str:
     """Assemble the full system prompt for an AI-driven bot.
 
     Static character/appearance text comes from Game/Bots/<sid>/prompt.md;
-    the setting, current time, and interaction history are layered on at runtime.
+    the setting and current time are layered on at runtime.
     """
     from dynamic_functions.Home.location import location_compose_descriptions
 
@@ -293,11 +244,5 @@ def slot_prompt(
 
     parts.append(load_bot_prompt(bot_sid))
     parts.append(f"## Current Time\n\n{datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-    note = build_interaction_context(
-        speaker_name, prior_interaction_count, last_interaction_at, speaker_name
-    )
-    if note:
-        parts.append(f"## Interaction History\n\n{note}")
 
     return "\n\n".join(parts)

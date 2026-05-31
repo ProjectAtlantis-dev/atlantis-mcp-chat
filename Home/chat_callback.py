@@ -6,7 +6,6 @@ import logging
 from dynamic_functions.Home.chat import (
     analyze_participants, fetch_transcript,
 )
-from dynamic_functions.Home.interactions import record_interaction
 from dynamic_functions.Home.slot import slot_location, slot_occupants_at, slot_prompt
 from dynamic_functions.Home.turn import bot_turn
 
@@ -83,7 +82,6 @@ async def _handle_chat(game_key: str):
     await _respond_as_bot(
         game_key=game_key,
         bot_record=next_up,
-        speaker_sid=speaker_sid,
         transcript=transcript,
     )
 
@@ -92,9 +90,7 @@ async def _handle_chat(game_key: str):
 async def greet_entrant(game_key: str, entrant_sid: str, location: str):
     """Fire an in-character greeting from a bot already at `location` toward a newcomer.
 
-    Bot recognition (stranger vs. familiar) falls out of the existing per-bot
-    interaction memory injected via build_interaction_context — no special prompt
-    needed. Mirrors _handle_chat's "first bot heard responds" pattern.
+    Mirrors _handle_chat's "first bot heard responds" pattern.
     """
     if not atlantis.get_session_key():
         logger.warning("greet_entrant called without session context, skipping")
@@ -122,24 +118,19 @@ async def greet_entrant(game_key: str, entrant_sid: str, location: str):
         await _respond_as_bot(
             game_key=game_key,
             bot_record=greeter,
-            speaker_sid=entrant_sid,
             transcript=transcript,
         )
     finally:
         atlantis.session_shared.remove(_BUSY_KEY)
 
 
-async def _respond_as_bot(*, game_key: str, bot_record: dict, speaker_sid: str, transcript: list):
+async def _respond_as_bot(*, game_key: str, bot_record: dict, transcript: list):
     bot_sid = bot_record["occupant"]
     location = slot_location(game_key, bot_sid)
-    speaker_name = speaker_sid
-    system_prompt = slot_prompt(bot_sid, location, speaker_name)
+    system_prompt = slot_prompt(bot_sid, location)
 
     await bot_turn(
         bot_sid=bot_sid,
         system_prompt=system_prompt,
         transcript=transcript,
     )
-
-    speaker_name = ""  # TODO: from slots
-    record_interaction(game_key, bot_sid, speaker_sid, first_name=speaker_name)

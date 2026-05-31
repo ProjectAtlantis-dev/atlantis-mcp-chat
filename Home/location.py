@@ -143,12 +143,12 @@ def location_image_path(name: str) -> str:
 # Visible tools
 # =========================================================================
 
-def _location_rows() -> List[Dict[str, str]]:
+def _location_rows() -> List[Dict[str, Any]]:
     """Pure data: list locations. No client side effects."""
     locations_dir = _locations_dir()
     if not os.path.isdir(locations_dir):
         return []
-    locations: List[Dict[str, str]] = []
+    locations: List[Dict[str, Any]] = []
     for entry in sorted(os.listdir(locations_dir)):
         entry_dir = os.path.join(locations_dir, entry)
         if not os.path.isdir(entry_dir) or entry.startswith('.') or entry == '__pycache__':
