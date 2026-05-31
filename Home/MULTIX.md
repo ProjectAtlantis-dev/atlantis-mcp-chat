@@ -2,15 +2,17 @@
 
 ## Overview
 
-You should have an MCP called Atlantis, with the following ways to access the Project Atlantis system, which helps us manage automation across the island of Greenland:
+Each Atlantis MCP acts as a filesystem node for Multix, our nix-like 'operating system' for future Greenland:
 
 - **readme** - this file
 - **command** - use this to enter an Atlantis command
 - **chat** - use this to just talk into the chat
 
+Since bots rely on tools, each folder in Multix contains functions instead of files.
+
 ## Commands
 
-`command` lets you send commands in Atlantis. All commands should start with `/`. They kinda follow a Linux style shell approach. In fact, you can enable terminal mode to enter the Multix terminal directly and avoid having to prefix everything with slashes. The main difference is that each MCP exposes a virtual filesystem of sorts but of functions instead of files. The file containers are essentially unwrapped and then hotloaded so they are call ready. Note that the default container is usually main.py and more than one function can be in the same file. Generally, you should not have to care about the containing file except for versioning.
+`command` lets humans or bots send commands to Multix. All commands should start with `/`. They kinda follow a Linux style shell approach. In fact, you can enable terminal mode to enter the Multix terminal directly and avoid having to prefix everything with slashes. The main difference is that each MCP exposes a virtual filesystem of sorts but of functions instead of files. The file containers are essentially unwrapped and then hotloaded so they are call ready. Note that the default container is usually main.py and more than one function can be in the same file. Generally, you should not have to care about the containing file except for versioning.
 
 Some interesting commands to get you started:
 
@@ -74,3 +76,9 @@ When a command or tool returns tabular data, that is saved into a pseudo-table c
 ## MCP Servers
 
 Be aware you can list, start, and stop classic MCP servers as well (which are more like plug-ins).
+
+## Cursors
+
+In practical programming terms, a cursor does what a call stack what normally do - it's simply a place to hold function parameters so you don't have to constantly type them in.  That is if you have a function `foo(x,y)` and the cursor already hold `x=3` then you only need to supply `y` on the command line.
+
+Why cursors? Well although tools are functions, we don't have an interactive way to compose functions in a categories (think category theory) since there's no functional programming (FP) here and everyone hates FP anyway. So cursors play the role of monads ie the 'glue' btw functions. If you are familiar with Scala ZIO then be aware the cursor is a stack e.g. setting x=3 and then x=4 actually pushes 2 structures onto the cursor stack and you can pop later.
