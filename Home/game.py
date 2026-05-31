@@ -61,15 +61,23 @@ def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
 
     The one place a membership record is shaped — used by game_new for the
     creator and game_join for everyone else, so the two stay identical. Raises
-    if there is no session to enroll; returns the same map for chaining.
+    if there is no session to enroll, or if this session/shell is already
+    enrolled; returns the same map for chaining.
     """
     session_key = atlantis.get_session_key()
     if not session_key:
         raise RuntimeError("No session key in this call context")
+    if session_key in members:
+        raise RuntimeError(f"Session is already a member: {session_key}")
+
+    shell = atlantis.get_caller_shell_path() or ""
+    if shell and any(rec.get("shell") == shell for rec in members.values()):
+        raise RuntimeError(f"Shell is already a member: {shell}")
+
     members[session_key] = {
         "sid": atlantis.get_caller() or "",
         "user_game_id": atlantis.get_user_game_id(),
-        "shell": atlantis.get_caller_shell_path() or "",
+        "shell": shell,
         "joined_at": datetime.now().isoformat(timespec="seconds"),
     }
     return members
@@ -266,7 +274,7 @@ async def game_password(game_key: str, new_password: str) -> None:
 
     meta['join_password'] = new_password
     _write_json(os.path.join(path, 'game.json'), meta)
-    await atlantis.client_log("Password changed")
+    await atlantis.client_log(f"Password to game {game_key} was changed")
 
 
 @public

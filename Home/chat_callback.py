@@ -2,15 +2,28 @@
 
 import atlantis
 import logging
+import os
 
 from dynamic_functions.Home.chat import (
     analyze_participants, fetch_transcript,
 )
+from dynamic_functions.Home.common import _read_json
+from dynamic_functions.Home.game import _game_roster_scene, require_game_dir
 from dynamic_functions.Home.turn import bot_turn
 
 logger = logging.getLogger("mcp_server")
 
 _BUSY_KEY = "chat_busy"
+
+
+def _require_roster_assigned(game_key: str) -> None:
+    """Fail early if chat starts before this game has a created roster."""
+    data_dir = require_game_dir(game_key)
+    meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+    if not _game_roster_scene(meta):
+        raise RuntimeError(f"Game {game_key!r} has no roster assigned yet")
+    if not os.path.isfile(os.path.join(data_dir, "roster.json")):
+        raise RuntimeError(f"Game {game_key!r} has no roster.json yet")
 
 
 @public
@@ -20,6 +33,7 @@ async def chat_callback(game_key: str):
     if not atlantis.get_session_key():
         logger.warning("chat_callback fired without session context, skipping")
         return
+    _require_roster_assigned(game_key)
 
     request_id = atlantis.get_request_id() or "unknown"
     if atlantis.session_shared.get(_BUSY_KEY):

@@ -18,20 +18,22 @@ def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
         if not isinstance(slot, dict):
             raise ValueError(f"Scene {scene!r} row {index} must be an object")
 
-        name = str(slot.get("name", "")).strip()
+        key = str(slot.get("key") or slot.get("name", "")).strip()
         bot_sid = str(slot.get("bot_sid", "")).strip()
-        if not name:
-            raise ValueError(f"Scene {scene!r} row {index} is missing name")
+        if not key:
+            raise ValueError(f"Scene {scene!r} row {index} is missing key")
         if not bot_sid:
             raise ValueError(f"Scene {scene!r} row {index} is missing bot_sid")
 
         load_bot(bot_sid)
+        row = {**slot}
+        row.pop("name", None)
         rows.append({
-            **slot,
-            "name": name,
+            **row,
+            "key": key,
             "bot_sid": bot_sid,
             "ai": True,
-            "finalName": name,
+            "finalName": key,
         })
     return rows
 

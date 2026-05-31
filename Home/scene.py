@@ -1,6 +1,6 @@
 """Scene tools
 
-A scene is a named roster of slots — a list of {name, bot_sid} entries that
+A scene is a named roster of slots — a list of {key, bot_sid} entries that
 seed a game's cast. Its identity is the filename: Game/Scenes/<name>.json, the
 same way a bot's identity is its folder name.
 """
@@ -9,7 +9,7 @@ import atlantis
 import logging
 import os
 import re
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from dynamic_functions.Home.common import home_path, _read_json
 from dynamic_functions.Home.bot import load_bot
@@ -36,7 +36,7 @@ def _scene_path(scene: str) -> str:
 
 
 def _load_scene(scene: str) -> List[Dict[str, str]]:
-    """Load a scene's slots — Game/Scenes/<scene>.json, an array of {name, bot_sid}."""
+    """Load a scene's slots — Game/Scenes/<scene>.json, an array of {key, bot_sid}."""
     slots = _read_json(_scene_path(scene))
     if slots is None:
         raise ValueError(f"Unknown scene: {scene!r}")
@@ -65,15 +65,17 @@ async def scene_list() -> List[str]:
 
 
 @public
-async def scene_show(scene: str) -> List[Dict[str, str]]:
+async def scene_show(scene: str) -> List[Dict[str, Any]]:
     """Show a scene's slots, each resolved to its bot displayName.
 
     Resolving the sid doubles as foreign-key validation: an unknown bot_sid
     raises rather than rendering a dangling row.
     """
+    from dynamic_functions.Home.roster import _scene_roster_rows
+
     rows = [
         {**slot, "displayName": load_bot(slot["bot_sid"])["displayName"]}
-        for slot in _load_scene(scene)
+        for slot in _scene_roster_rows(scene)
     ]
     await atlantis.client_data(scene, rows)
     return rows
