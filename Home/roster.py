@@ -69,9 +69,8 @@ def _load_game_roster(game_key: str) -> List[Dict[str, Any]]:
     return rows
 
 
-@public
-async def roster_list() -> List[Dict[str, Any]]:
-    """Show all generated roster rows, grouped by source scene filename."""
+def _roster_rows() -> List[Dict[str, Any]]:
+    """Pure data for roster_list: generated roster rows for every scene."""
     rows: List[Dict[str, Any]] = []
     for scene_name in _scene_names():
         scene_rows = _scene_roster_rows(scene_name)
@@ -80,6 +79,13 @@ async def roster_list() -> List[Dict[str, Any]]:
             "scene_name": scene_name,
             **row,
         } for row in scene_rows)
+    return rows
+
+
+@public
+async def roster_list() -> List[Dict[str, Any]]:
+    """Show all generated roster rows, grouped by source scene filename."""
+    rows = _roster_rows()
     await atlantis.client_data("Rosters", rows)
     return rows
 

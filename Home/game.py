@@ -377,8 +377,8 @@ async def game_rejoin(game_key: str):
 async def game_overview(game_key: str) -> None:
     """Show the game state diagram — scenes, roster, bots, locations, and cameras."""
     from dynamic_functions.Home.camera import _camera_rows
-    from dynamic_functions.Home.roster import _number_duplicate_display_names, _scene_roster_rows
-    from dynamic_functions.Home.scene import _load_scene, _scene_names
+    from dynamic_functions.Home.roster import _roster_rows
+    from dynamic_functions.Home.scene import _scene_rows
     data_dir = require_membership(game_key)
 
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}
@@ -386,19 +386,8 @@ async def game_overview(game_key: str) -> None:
     bot_rows = _bot_rows()
     loc_rows = _location_rows()
     camera_rows = _camera_rows(game_key)
-    scene_names = _scene_names()
-    scene_rows = [
-        {"name": scene, "slots": len(_load_scene(scene))}
-        for scene in scene_names
-    ]
-    roster_rows = []
-    for scene_name in scene_names:
-        scene_roster_rows = _scene_roster_rows(scene_name)
-        _number_duplicate_display_names(scene_roster_rows)
-        roster_rows.extend({
-            "scene_name": scene_name,
-            **row,
-        } for row in scene_roster_rows)
+    scene_rows = _scene_rows()
+    roster_rows = _roster_rows()
 
     # Build an HTML table
     def _trunc(s, n=40):

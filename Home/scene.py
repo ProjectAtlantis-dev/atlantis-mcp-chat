@@ -56,15 +56,20 @@ def _scene_names() -> List[str]:
     return sorted(names)
 
 
+def _scene_rows() -> List[Dict[str, Any]]:
+    """Pure data for scene_list: one row per scene definition."""
+    return [
+        {"name": name, "slots": len(_load_scene(name))}
+        for name in _scene_names()
+    ]
+
+
 @public
 async def scene_list() -> List[str]:
     """List available scenes by name."""
-    names = _scene_names()
-    await atlantis.client_data("Scenes", [
-        {"name": name, "slots": len(_load_scene(name))}
-        for name in names
-    ])
-    return names
+    rows = _scene_rows()
+    await atlantis.client_data("Scenes", rows)
+    return [row["name"] for row in rows]
 
 
 @public
