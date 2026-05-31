@@ -22,15 +22,26 @@ async def index():
 
 # % foo 3 4
 
+def _number(value, name):
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a number")
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+
+
 @visible
-async def foo(x,y):
+async def foo(x: int | float, y: int | float):
     """
     This is a placeholder function for 'foo'
     """
     logger.info(f"Executing placeholder function: foo...")
 
-    await atlantis.client_log("foo running")
+    #await atlantis.client_log("foo running")
 
-    # Replace this return statement with your function's result
+    x = _number(x, "x")
+    y = _number(y, "y")
     return x + y
-
