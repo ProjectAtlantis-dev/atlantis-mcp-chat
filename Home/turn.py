@@ -62,6 +62,7 @@ async def run_turn(
     tools: List[AtlantisSearchToolT] = [],
 ) -> Optional[str]:
     """Run a streaming tool-calling turn. Loads bot config from bot_sid."""
+    # this is old bullshit needs to be pulling from bot.py
     from dynamic_functions.Home.common import _load_bot_config
 
     loaded = _load_bot_config(bot_sid)

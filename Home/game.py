@@ -3,14 +3,85 @@
 import atlantis
 import json
 import os
+import re
 import uuid
+from datetime import datetime
 from typing import Dict, Any
 
+from dynamic_functions.Home.common import home_path, _read_json, _write_json
 from dynamic_functions.Home.location import _location_rows
 
 from dynamic_functions.Home.bot import _bot_rows
 from dynamic_functions.Home.term import term_video
 
+
+# ---------------------------------------------------------------------------
+# Game data directory + membership
+# ---------------------------------------------------------------------------
+
+def _safe_id(value: str, label: str = "id") -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(value or "").strip())
+    if not safe:
+        raise ValueError(f"Cannot use an empty {label}")
+    return safe
+
+
+def game_dir(game_key: str) -> str:
+    """Get a game data directory path"""
+    return home_path("Data", "games", _safe_id(game_key, "game_key"))
+
+
+def require_game_dir(game_key: str) -> str:
+    """Get an existing game data directory"""
+    path = game_dir(game_key)
+    if not os.path.isdir(path):
+        raise RuntimeError(f"Invalid game '{game_key}'")
+    return path
+
+
+def create_game_dir(game_key: str) -> str:
+    """Create a game data directory"""
+    path = game_dir(game_key)
+    os.makedirs(path, exist_ok=False)
+    return path
+
+
+def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
+    """Record the calling session in a members map, keyed by session key.
+
+    The one place a membership record is shaped — used by game_new for the
+    creator and game_join for everyone else, so the two stay identical. Raises
+    if there is no session to enroll; returns the same map for chaining.
+    """
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+    members[session_key] = {
+        "sid": atlantis.get_caller() or "",
+        "user_game_id": atlantis.get_user_game_id(),
+        "shell": atlantis.get_caller_shell_path() or "",
+        "joined_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    return members
+
+
+def require_membership(game_key: str) -> str:
+    """Authorize the calling session against a game; return its data dir.
+
+    The single gate every game-scoped tool calls first: the game must exist and
+    the caller's session must already be a member — seeded by game_new for the
+    creator, or recorded by game_join for everyone else. Raises for an unknown
+    game or a non-member session; never returns for an unauthorized caller.
+    """
+    path = require_game_dir(game_key)
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+    meta = _read_json(os.path.join(path, "game.json")) or {}
+    members = meta.get("members") or {}
+    if session_key not in members:
+        raise PermissionError(f"Session is not a member of game '{game_key}'")
+    return path
 
 
 @button("New Chat")
@@ -62,8 +133,6 @@ async def game_background() -> None:
 @public
 async def game_new() -> Dict[str, Any]:
     """Create a new game session"""
-    from dynamic_functions.Home.common import create_game_dir, game_dir, _write_json, add_caller_membership
-
     for _ in range(10):
         game_key = uuid.uuid4().hex
         data_dir = game_dir(game_key)
@@ -98,8 +167,6 @@ async def game_new() -> Dict[str, Any]:
 @public
 async def game_list() -> list:
     """List existing games, newest first"""
-    from datetime import datetime
-    from dynamic_functions.Home.common import home_path, _read_json
     games_root = home_path("Data", "games")
     if not os.path.isdir(games_root):
         return []
@@ -130,8 +197,6 @@ async def game_list() -> list:
 async def game_show(game_key: str) -> dict:
     """Show a game's status. The owner sees full detail (join password + members);
     everyone else sees only owner, member count, and created time."""
-    from datetime import datetime
-    from dynamic_functions.Home.common import require_game_dir, _read_json
     path = require_game_dir(game_key)
     meta = _read_json(os.path.join(path, 'game.json')) or {}
     owner = meta.get("owner", "")
@@ -169,8 +234,6 @@ async def game_show(game_key: str) -> dict:
 @public
 async def game_password(game_key: str, new_password: str) -> None:
     """Change a game's join password. Only the owner may do this."""
-    from dynamic_functions.Home.common import require_game_dir, _read_json, _write_json
-
     if not new_password:
         raise ValueError("new_password required")
 
@@ -223,8 +286,6 @@ async def game_join_interactive_latest() -> Dict[str, Any]:
 @public
 async def game_join(game_key: str, password: str) -> Dict[str, Any]:
     """Join a specific game by its password and enroll the caller."""
-    from dynamic_functions.Home.common import require_game_dir, _read_json, _write_json, add_caller_membership
-
     if not game_key:
         raise ValueError("game_key required")
     if not password:
@@ -253,8 +314,6 @@ async def game_rejoin(game_key: str):
     as a new member entry. No-op if this session is already enrolled. A sid that
     was never a member must use game_join with the password instead.
     """
-    from dynamic_functions.Home.common import require_game_dir, _read_json, _write_json, add_caller_membership
-
     path = require_game_dir(game_key)
     meta = _read_json(os.path.join(path, 'game.json')) or {}
     members = meta.get('members') or {}
@@ -264,8 +323,6 @@ async def game_rejoin(game_key: str):
         raise RuntimeError("No caller identity in this call context")
     if caller_sid not in {rec.get('sid') for rec in members.values()}:
         raise PermissionError(f"Not a member of game '{game_key}' — password required to join")
-
-    from datetime import datetime
 
     session_key = atlantis.get_session_key()
     if session_key not in members:
@@ -284,7 +341,6 @@ async def game_rejoin(game_key: str):
 @visible
 async def game_overview(game_key: str) -> None:
     """Show the game state diagram — bots, locations, slots, and cameras."""
-    from dynamic_functions.Home.common import require_membership
     from dynamic_functions.Home.slot import _slot_rows
     from dynamic_functions.Home.camera import _camera_rows
     require_membership(game_key)

@@ -63,7 +63,7 @@ async def fetch_transcript(game_key: str) -> Tuple[List[Dict[str, Any]], List[Di
     if raw_transcript[0].get('role') == 'system':
         logger.info("Found system message in transcript - will use our own system prompt instead")
 
-    from dynamic_functions.Home.common import require_game_dir
+    from dynamic_functions.Home.game import require_game_dir
     transcript_dump_file = os.path.join(require_game_dir(game_key), 'raw_transcript.json')
     try:
         with open(transcript_dump_file, 'w') as f:

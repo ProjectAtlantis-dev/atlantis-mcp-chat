@@ -17,9 +17,8 @@ from typing import Any, Dict, List
 from dynamic_functions.Home.common import (
     _read_json,
     _write_json,
-    require_game_dir,
-    require_membership,
 )
+from dynamic_functions.Home.game import require_game_dir, require_membership
 from dynamic_functions.Home.location import (
     _leaf_location_keys,
     _load_location,

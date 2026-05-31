@@ -11,12 +11,32 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
-from dynamic_functions.Home.common import _bots_dir, _ensure_thumb
+from dynamic_functions.Home.common import _ensure_thumb, home_path, _require_str
 from dynamic_functions.Home.location import _leaf_location_keys
 
 logger = logging.getLogger("mcp_server")
+
+
+class BotConfigT(TypedDict):
+    """A bot's config.json, normalized into a guaranteed-populated record.
+
+    Core fields (displayName, defaultLocation, provider, model) are required and
+    validated at load; the rest carry typed empty-string defaults.
+    """
+    sid: str
+    displayName: str
+    defaultLocation: str
+    provider: str
+    model: str
+    baseUrl: str
+    apiKeyEnv: str
+    image: str
+
+
+def _bots_dir() -> str:
+    return home_path("Game", "Bots")
 
 
 def _load_bot_json(bot_sid: str) -> dict:
@@ -131,3 +151,25 @@ def _validate_bot(bot_sid: str) -> None:
     """Validate a bot folder."""
     if not os.path.isdir(os.path.join(_bots_dir(), bot_sid)):
         raise ValueError(f"Bot folder not found: {bot_sid}")
+
+
+def load_bot(bot_sid: str) -> BotConfigT:
+    """Load a bot's config as a typed, fully-populated record.
+
+    The single boundary where a loose config.json becomes a known shape. Raises
+    if the sid has no folder (foreign-key check) or if a core field is missing —
+    a malformed bot fails loudly here instead of rendering a half-blank row.
+    """
+    _validate_bot(bot_sid)
+    raw = _load_bot_json(bot_sid)
+    label = f"Bot {bot_sid!r} config.json"
+    return BotConfigT(
+        sid=bot_sid,
+        displayName=_require_str(raw, "displayName", label),
+        defaultLocation=_require_str(raw, "defaultLocation", label),
+        provider=_require_str(raw, "provider", label),
+        model=_require_str(raw, "model", label),
+        baseUrl=str(raw.get("baseUrl", "")),
+        apiKeyEnv=str(raw.get("apiKeyEnv", "")),
+        image=str(raw.get("image", "")),
+    )

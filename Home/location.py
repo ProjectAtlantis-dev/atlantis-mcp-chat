@@ -6,11 +6,28 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
-from dynamic_functions.Home.common import _ensure_thumb, home_path
+from dynamic_functions.Home.common import _ensure_thumb, home_path, _require_str
 
 logger = logging.getLogger("mcp_server")
+
+
+class LocationConfigT(TypedDict):
+    """A location's config.json, normalized into a typed record.
+
+    `displayName` is required and validated at load. `parent` and `image` are
+    nullable — a root location has no parent, a container has no image — and
+    surface as None rather than "". The rest carry typed defaults.
+    """
+    name: str
+    displayName: str
+    parent: Optional[str]
+    connects_to: List[str]
+    description: str
+    default: bool
+    defaultCameraAlign: str
+    image: Optional[str]
 
 
 # =========================================================================
@@ -36,6 +53,29 @@ def _load_location(name: str) -> Optional[Dict[str, Any]]:
         return None
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_location(name: str) -> LocationConfigT:
+    """Load a location's config as a typed record.
+
+    The boundary where a loose config.json becomes a known shape. Raises if the
+    name has no config (foreign-key check) or if displayName is missing. Nullable
+    fields (parent, image) come back as None when absent rather than "".
+    """
+    raw = _load_location(name)
+    if raw is None:
+        raise ValueError(f"Unknown location: {name}")
+    label = f"Location {name!r} config.json"
+    return LocationConfigT(
+        name=name,
+        displayName=_require_str(raw, "displayName", label),
+        parent=(str(raw.get("parent") or "").strip() or None),
+        connects_to=list(raw.get("connects_to") or []),
+        description=str(raw.get("description", "")),
+        default=bool(raw.get("default", False)),
+        defaultCameraAlign=str(raw.get("defaultCameraAlign", "")),
+        image=(str(raw.get("image") or "").strip() or None),
+    )
 
 
 def _connects_to(location_name: str) -> List[str]:
@@ -176,10 +216,10 @@ def _location_rows() -> List[Dict[str, Any]]:
         locations.append({
             'name': name,
             'displayName': data.get('displayName', name),
+            'image': image_data,
+            'description': data.get('description', ''),
             'parent': data.get('parent') or '',
             'connects_to': '\n'.join(data.get('connects_to', []) or []),
-            'description': data.get('description', ''),
-            'image': image_data,
             'updated': datetime.fromtimestamp(max(mtimes)).strftime('%Y-%m-%d %H:%M'),
         })
     # A location is a leaf (standable) iff nothing else claims it as a parent.
@@ -222,7 +262,7 @@ async def location_list() -> List[Dict[str, str]]:
     """List locations"""
     locations = _location_rows()
     await atlantis.client_data("Locations", locations, column_formatter={
-        "description": {"type": "markdown", "maxWidth": "80ch"},
+        "description": {"type": "markdown", "maxWidth": "60ch"},
         "connects_to": {"type": "pre"},
     })
     return locations

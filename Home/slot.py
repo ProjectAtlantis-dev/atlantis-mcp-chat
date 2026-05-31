@@ -19,11 +19,9 @@ from dynamic_functions.Home.common import (
     _read_json,
     _write_json,
     home_path,
-    _bots_dir,
-    require_game_dir,
-    require_membership,
 )
-from dynamic_functions.Home.bot import bot_entry_location
+from dynamic_functions.Home.bot import _bots_dir, bot_entry_location
+from dynamic_functions.Home.game import require_game_dir, require_membership
 
 
 def _slots_path(game_key: str) -> str:

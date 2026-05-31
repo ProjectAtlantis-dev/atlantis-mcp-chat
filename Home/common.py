@@ -1,105 +1,19 @@
-"""Shared game helpers"""
+"""Shared helpers — path resolution, JSON I/O, and thumbnails."""
 
-import atlantis
 import json
 import logging
 import os
-import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
 logger = logging.getLogger("mcp_server")
 
 # ---------------------------------------------------------------------------
-# Game data I/O
+# Paths & JSON I/O
 # ---------------------------------------------------------------------------
 
 def home_path(*parts: str) -> str:
     """Resolve a path under python-server/dynamic_functions/."""
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *parts))
-
-
-def _safe_id(value: str, label: str = "id") -> str:
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(value or "").strip())
-    if not safe:
-        raise ValueError(f"Cannot use an empty {label}")
-    return safe
-
-
-def game_dir(game_key: str) -> str:
-    """Get a game data directory path"""
-    return home_path("Data", "games", _safe_id(game_key, "game_key"))
-
-
-def require_game_dir(game_key: str) -> str:
-    """Get an existing game data directory"""
-    path = game_dir(game_key)
-    if not os.path.isdir(path):
-        raise RuntimeError(f"Invalid game '{game_key}'")
-    return path
-
-
-def create_game_dir(game_key: str) -> str:
-    """Create a game data directory"""
-    path = game_dir(game_key)
-    os.makedirs(path, exist_ok=False)
-    return path
-
-
-def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
-    """Record the calling session in a members map, keyed by session key.
-
-    The one place a membership record is shaped — used by game_new for the
-    creator and game_join for everyone else, so the two stay identical. Raises
-    if there is no session to enroll; returns the same map for chaining.
-    """
-    session_key = atlantis.get_session_key()
-    if not session_key:
-        raise RuntimeError("No session key in this call context")
-    members[session_key] = {
-        "sid": atlantis.get_caller() or "",
-        "user_game_id": atlantis.get_user_game_id(),
-        "shell": atlantis.get_caller_shell_path() or "",
-        "joined_at": datetime.now().isoformat(timespec="seconds"),
-    }
-    return members
-
-
-def require_owner(game_key: str) -> str:
-    """Authorize the calling caller as the game's creator; return its data dir.
-
-    Stricter than require_membership: only the sid recorded as the game's owner
-    passes — membership is not enough. Keyed on the caller sid, not the session,
-    so the creator stays the owner across reconnects. Raises for an unknown game
-    or any non-owner caller; never returns for an unauthorized caller.
-    """
-    path = require_game_dir(game_key)
-    caller = atlantis.get_caller()
-    if not caller:
-        raise RuntimeError("No caller identity in this call context")
-    meta = _read_json(os.path.join(path, "game.json")) or {}
-    if caller != meta.get("owner"):
-        raise PermissionError(f"Only the owner may access game '{game_key}'")
-    return path
-
-
-def require_membership(game_key: str) -> str:
-    """Authorize the calling session against a game; return its data dir.
-
-    The single gate every game-scoped tool calls first: the game must exist and
-    the caller's session must already be a member — seeded by game_new for the
-    creator, or recorded by game_join for everyone else. Raises for an unknown
-    game or a non-member session; never returns for an unauthorized caller.
-    """
-    path = require_game_dir(game_key)
-    session_key = atlantis.get_session_key()
-    if not session_key:
-        raise RuntimeError("No session key in this call context")
-    meta = _read_json(os.path.join(path, "game.json")) or {}
-    members = meta.get("members") or {}
-    if session_key not in members:
-        raise PermissionError(f"Session is not a member of game '{game_key}'")
-    return path
 
 
 def _read_json(path: str, default=None):
@@ -120,55 +34,17 @@ def _write_json(path: str, data) -> None:
     os.replace(tmp, path)
 
 
-def _bots_dir() -> str:
-    return home_path("Game", "Bots")
+def _require_str(data: Dict[str, Any], key: str, label: str) -> str:
+    """Pull a non-empty string field from a config dict, or raise.
 
-
-def _scenarios_dir() -> str:
-    return home_path("Game", "Scenarios")
-
-
-def _load_scenario(name: str) -> Dict[str, Any]:
-    """Load a scenario roster — Game/Scenarios/<name>.json.
-
-    A scenario is the canonical per-game cast: its `slots` maps a slot name
-    to the bot sid that fills it. Raises on
-    an unknown scenario or a scenario with no slots — a game cannot be pinned to
-    a roster that does not exist.
+    The strict-config boundary: where a loose config.json field is asserted
+    present before it becomes part of a typed record. `label` names the owner
+    for the error (e.g. "Bot 'chad' config.json").
     """
-    path = os.path.join(_scenarios_dir(), f"{_safe_id(name, 'scenario')}.json")
-    data = _read_json(path)
-    if data is None:
-        raise ValueError(f"Unknown scenario: {name!r}")
-    if not data.get("slots"):
-        raise ValueError(f"Scenario {name!r} has no slots")
-    return data
-
-
-def _load_bot_config(bot_sid: str) -> Optional[Tuple[Dict[str, Any], str]]:
-    """Load a bot config — folder name is the sid"""
-    bot_dir = os.path.join(_bots_dir(), bot_sid)
-    config_path = os.path.join(bot_dir, "config.json")
-    if not os.path.isfile(config_path):
-        return None
-    with open(config_path) as f:
-        cfg = json.load(f)
-    cfg["_botDir"] = bot_dir
-    return cfg, bot_sid
-
-
-def _available_bot_sids() -> List[str]:
-    """List known bot sids (folder names)"""
-    bots_dir = _bots_dir()
-    if not os.path.isdir(bots_dir):
-        return []
-    sids = []
-    for entry in os.listdir(bots_dir):
-        if entry.startswith(".") or entry == "__pycache__":
-            continue
-        if os.path.isfile(os.path.join(bots_dir, entry, "config.json")):
-            sids.append(entry)
-    return sorted(sids)
+    value = str(data.get(key, "")).strip()
+    if not value:
+        raise ValueError(f"{label} is missing required field {key!r}")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -180,16 +56,11 @@ THUMB_QUALITY = 80
 THUMB_SUFFIX = "_thumb.jpg"
 
 
-def _thumb_path_for(image_path: str) -> str:
-    """Get a thumbnail path for an image"""
-    base, _ = os.path.splitext(image_path)
-    return base + THUMB_SUFFIX
-
-
 def _ensure_thumb(image_path: str) -> str:
     """Create or reuse a thumbnail"""
     logger.info(f"[thumb] _ensure_thumb called: {image_path}")
-    thumb = _thumb_path_for(image_path)
+    base, _ = os.path.splitext(image_path)
+    thumb = base + THUMB_SUFFIX
     try:
         # Reuse current thumbnails
         if os.path.isfile(thumb) and os.path.getmtime(thumb) >= os.path.getmtime(image_path):
