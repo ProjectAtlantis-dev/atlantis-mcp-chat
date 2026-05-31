@@ -60,22 +60,22 @@ def _scene_names() -> List[str]:
 async def scene_list() -> List[str]:
     """List available scenes by name."""
     names = _scene_names()
-    await atlantis.client_data("Scenes", [{"scene": name} for name in names])
+    await atlantis.client_data("Scenes", [
+        {"name": name, "slots": len(_load_scene(name))}
+        for name in names
+    ])
     return names
 
 
 @public
 async def scene_show(scene: str) -> List[Dict[str, Any]]:
-    """Show a scene's slots, each resolved to its bot displayName.
+    """Show a scene's slots exactly as scene-definition rows.
 
     Resolving the sid doubles as foreign-key validation: an unknown bot_sid
     raises rather than rendering a dangling row.
     """
-    from dynamic_functions.Home.roster import _scene_roster_rows
-
-    rows = [
-        {**slot, "displayName": load_bot(slot["bot_sid"])["displayName"]}
-        for slot in _scene_roster_rows(scene)
-    ]
+    rows = _load_scene(scene)
+    for row in rows:
+        load_bot(row["bot_sid"])
     await atlantis.client_data(scene, rows)
     return rows

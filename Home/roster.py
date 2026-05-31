@@ -11,6 +11,27 @@ from dynamic_functions.Home.game import require_membership
 from dynamic_functions.Home.scene import _load_scene, _scene_name
 
 
+def _number_duplicate_display_names(rows: List[Dict[str, Any]]) -> None:
+    used: set[str] = set()
+    for row in rows:
+        display_name = str(row.get("displayName", "")).strip()
+        key = str(row.get("key", "")).strip()
+        if not display_name:
+            raise ValueError(f"Roster row {key!r} is missing displayName")
+
+        if display_name not in used:
+            used.add(display_name)
+            continue
+
+        count = 2
+        numbered_name = f"{display_name} {count}"
+        while numbered_name in used:
+            count += 1
+            numbered_name = f"{display_name} {count}"
+        row["displayName"] = numbered_name
+        used.add(numbered_name)
+
+
 def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
     """Convert a static scene into initial per-game roster rows."""
     rows: List[Dict[str, Any]] = []
@@ -18,22 +39,19 @@ def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
         if not isinstance(slot, dict):
             raise ValueError(f"Scene {scene!r} row {index} must be an object")
 
-        key = str(slot.get("key") or slot.get("name", "")).strip()
+        key = str(slot.get("key", "")).strip()
         bot_sid = str(slot.get("bot_sid", "")).strip()
         if not key:
             raise ValueError(f"Scene {scene!r} row {index} is missing key")
         if not bot_sid:
             raise ValueError(f"Scene {scene!r} row {index} is missing bot_sid")
 
-        load_bot(bot_sid)
-        row = {**slot}
-        row.pop("name", None)
+        bot = load_bot(bot_sid)
         rows.append({
-            **row,
             "key": key,
             "bot_sid": bot_sid,
             "ai": True,
-            "finalName": key,
+            "displayName": bot["displayName"],
         })
     return rows
 
@@ -57,6 +75,7 @@ async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
     data_dir = require_membership(game_key)
     scene_name = _scene_name(scene)
     rows = _scene_roster_rows(scene)
+    _number_duplicate_display_names(rows)
     _write_json(os.path.join(data_dir, "roster.json"), rows)
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}
     meta["roster"] = {

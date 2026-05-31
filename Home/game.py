@@ -375,13 +375,31 @@ async def game_rejoin(game_key: str):
 
 @visible
 async def game_overview(game_key: str) -> None:
-    """Show the game state diagram — bots, locations, slots, and cameras."""
+    """Show the game state diagram — scenes, roster, bots, locations, and cameras."""
     from dynamic_functions.Home.camera import _camera_rows
-    require_membership(game_key)
+    from dynamic_functions.Home.scene import _load_scene, _scene_names
+    data_dir = require_membership(game_key)
 
+    meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+    roster_scene = _game_roster_scene(meta) or ""
     bot_rows = _bot_rows()
     loc_rows = _location_rows()
     camera_rows = _camera_rows(game_key)
+    scene_names = _scene_names()
+    scene_rows = [
+        {"name": scene, "slots": len(_load_scene(scene))}
+        for scene in scene_names
+    ]
+    selected_scene_rows = []
+    if roster_scene:
+        selected_scene_rows = [
+            {"key": slot.get("key", ""), "bot_sid": slot.get("bot_sid", "")}
+            for slot in _load_scene(roster_scene)
+        ]
+    roster_path = os.path.join(data_dir, "roster.json")
+    roster_rows = _read_json(roster_path, []) if os.path.isfile(roster_path) else []
+    if not isinstance(roster_rows, list):
+        roster_rows = []
 
     # Build an HTML table
     def _trunc(s, n=40):
@@ -393,12 +411,14 @@ async def game_overview(game_key: str) -> None:
 
     uid = uuid.uuid4().hex[:8]
 
-    def _table(entity_id, title, headers, rows, dynamic=False, row_classes=None):
+    def _table(entity_id, title, headers, rows, dynamic=False, row_classes=None, tone=""):
         """Build one entity table. row_classes, if given, is a per-row CSS class."""
         scoped_id = f"{entity_id}-{uid}"
         cls = f"er-entity-{uid}"
         if dynamic:
             cls += f" er-dynamic-{uid}"
+        if tone:
+            cls += f" er-tone-{tone}-{uid}"
         h = "".join(f"<th>{_esc(c)}</th>" for c in headers)
         body = ""
         for i, row in enumerate(rows):
@@ -414,7 +434,17 @@ async def game_overview(game_key: str) -> None:
         )
 
     tables = []
-    tables.append(_table("ent-game", "GAME", ["key"], [[game_key]], dynamic=True))
+    tables.append(_table("ent-game", "GAME", ["key", "roster_scene"], [[game_key, roster_scene]], dynamic=True))
+    tables.append(_table("ent-scene", "SCENE", ["name", "slots"],
+        [[s["name"], s["slots"]] for s in scene_rows],
+        tone="green"))
+    tables.append(_table("ent-selected-scene", roster_scene or "SELECTED SCENE", ["key", "bot_sid"],
+        [[s["key"], s["bot_sid"]] for s in selected_scene_rows],
+        tone="orange"))
+    tables.append(_table("ent-roster", "ROSTER", ["key", "displayName", "bot_sid", "ai"],
+        [[r.get("key", ""), r.get("displayName", ""), r.get("bot_sid", ""), r.get("ai", "")] for r in roster_rows],
+        dynamic=True,
+        tone="orange"))
     tables.append(_table("ent-bot", "BOT", ["sid", "displayName", "defaultLocation", "model"],
         [[b["sid"], b["displayName"], b["defaultLocation"], b.get("model", "")] for b in bot_rows]))
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
@@ -425,6 +455,11 @@ async def game_overview(game_key: str) -> None:
 
     # Relationships
     relationships = [
+        (f"ent-game-{uid}", f"ent-scene-{uid}", "roster scene"),
+        (f"ent-scene-{uid}", f"ent-selected-scene-{uid}", "name"),
+        (f"ent-selected-scene-{uid}", f"ent-bot-{uid}", "bot_sid"),
+        (f"ent-roster-{uid}", f"ent-selected-scene-{uid}", "key"),
+        (f"ent-roster-{uid}", f"ent-bot-{uid}", "bot_sid"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "connects to"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "parent"),
         (f"ent-location-{uid}", f"ent-bot-{uid}", "defaultLocation"),
@@ -498,6 +533,30 @@ async def game_overview(game_key: str) -> None:
   #er-wrapper-{uid} .er-dynamic-{uid} th {{
     background: #223a2c;
     color: #a8c8b0;
+  }}
+  #er-wrapper-{uid} .er-tone-green-{uid} {{
+    background: #16281d;
+    border-color: #3f8f58;
+  }}
+  #er-wrapper-{uid} .er-tone-green-{uid} .er-title-{uid} {{
+    background: #27613b;
+    color: #d8ffe1;
+  }}
+  #er-wrapper-{uid} .er-tone-green-{uid} th {{
+    background: #203827;
+    color: #a7d8b4;
+  }}
+  #er-wrapper-{uid} .er-tone-orange-{uid} {{
+    background: #302114;
+    border-color: #b36a2c;
+  }}
+  #er-wrapper-{uid} .er-tone-orange-{uid} .er-title-{uid} {{
+    background: #8b4b1f;
+    color: #ffe1c2;
+  }}
+  #er-wrapper-{uid} .er-tone-orange-{uid} th {{
+    background: #442b18;
+    color: #e5b083;
   }}
   #er-wrapper-{uid} .er-entity-{uid} td {{
     padding: 3px 8px;
