@@ -279,7 +279,7 @@ async def game_join_interactive(game_key: str) -> Dict[str, Any]:
     password = await modal_string(
         f"Enter game password:",
         submit_label="Join",
-        title=f"Game ${game_key}",
+        title=f"Game {game_key}",
         submitting_label="Joining...",
         empty_error="Enter the password to continue.",
         input_type="password",
@@ -298,11 +298,16 @@ async def game_join_interactive(game_key: str) -> Dict[str, Any]:
 @button("Join Other Chat")
 @public
 async def game_join_interactive_latest() -> Dict[str, Any]:
-    """Prompt for the password to join the most recently created game."""
+    """Prompt for the password to join the owner's most recently created game."""
+    owner = str(atlantis.get_default_owner() or "").strip()
+    if not owner:
+        raise RuntimeError("No default owner in this call context")
+
     games = await game_list()
-    if not games:
-        raise RuntimeError("No games exist")
-    return await game_join_interactive(games[0]["game_key"])
+    owned_games = [game for game in games if game.get("owner") == owner]
+    if not owned_games:
+        raise RuntimeError(f"No games exist for owner {owner!r}")
+    return await game_join_interactive(owned_games[0]["game_key"])
 
 
 @public
