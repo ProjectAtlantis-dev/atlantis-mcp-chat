@@ -6,13 +6,13 @@ import os
 import re
 import uuid
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from dynamic_functions.Home.common import home_path, _read_json, _write_json
 from dynamic_functions.Home.location import _location_rows
 
 from dynamic_functions.Home.bot import _bot_rows
-from dynamic_functions.Home.term import term_video
+from dynamic_functions.Home.term import term_video, term_video_file
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +44,16 @@ def create_game_dir(game_key: str) -> str:
     path = game_dir(game_key)
     os.makedirs(path, exist_ok=False)
     return path
+
+
+def _game_roster_scene(meta: Dict[str, Any]) -> Optional[str]:
+    """Return the chosen roster scene, if assigned."""
+    roster = meta.get("roster") or {}
+    if isinstance(roster, dict):
+        scene = str(roster.get("scene", "") or "").strip()
+        if scene:
+            return scene
+    return None
 
 
 def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,6 +132,14 @@ async def game_video(video: str) -> None:
 
 
 @public
+async def game_video_file(video_path: str) -> None:
+    """Play a local game background video file in the terminal."""
+    if not os.path.isabs(video_path):
+        video_path = os.path.join(os.path.dirname(__file__), video_path)
+    await term_video_file(video_path)
+
+
+@public
 async def game_background() -> None:
     """Set the game background image."""
     await atlantis.set_background(
@@ -184,6 +202,7 @@ async def game_list() -> list:
             "game_key": name,
             "user_game_id": meta.get("user_game_id"),
             "owner": meta.get("owner", ""),
+            "roster": _game_roster_scene(meta) or "",
             "created": datetime.fromtimestamp(ts).isoformat(timespec="seconds"),
             "_ts": ts,
         })
@@ -202,12 +221,14 @@ async def game_show(game_key: str) -> dict:
     owner = meta.get("owner", "")
     members = meta.get("members") or {}
     created = datetime.fromtimestamp(os.path.getctime(path)).isoformat(timespec="seconds")
+    roster = _game_roster_scene(meta)
 
     if atlantis.get_caller() != owner:
         sids = sorted({rec.get("sid", "") for rec in members.values() if rec.get("sid")})
         return {
             "game_key": game_key,
             "owner": owner,
+            "roster": roster,
             "members": sids,
             "created": created,
         }
@@ -216,6 +237,7 @@ async def game_show(game_key: str) -> dict:
         "game_key": game_key,
         "user_game_id": meta.get("user_game_id"),
         "owner": owner,
+        "roster": roster,
         "join_password": meta.get("join_password", ""),
         "members": [
             {
@@ -341,13 +363,11 @@ async def game_rejoin(game_key: str):
 @visible
 async def game_overview(game_key: str) -> None:
     """Show the game state diagram — bots, locations, slots, and cameras."""
-    from dynamic_functions.Home.slot import _slot_rows
     from dynamic_functions.Home.camera import _camera_rows
     require_membership(game_key)
 
     bot_rows = _bot_rows()
     loc_rows = _location_rows()
-    slot_rows = _slot_rows(game_key)
     camera_rows = _camera_rows(game_key)
 
     # Build an HTML table
@@ -387,8 +407,6 @@ async def game_overview(game_key: str) -> None:
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
         [[l["name"], l["displayName"], l.get("parent", ""), l["connects_to"], _trunc(l.get("description", ""))] for l in loc_rows],
         row_classes=["" if l["is_leaf"] else f"er-nonleaf-{uid}" for l in loc_rows]))
-    tables.append(_table("ent-slot", "SLOTS", ["botSid", "assignment", "currentOccupant", "currentDisplayName", "sessionKey", "startLocation", "currentLocation"],
-        [[s["botSid"], s.get("assignment", ""), s.get("currentOccupant", ""), s.get("currentDisplayName", ""), s.get("sessionKey", ""), s.get("startLocation", ""), s.get("currentLocation", "")] for s in slot_rows], dynamic=True))
     tables.append(_table("ent-camera", "CAMERA", ["location", "terminal"],
         [[c["location"], c["terminal"]] for c in camera_rows], dynamic=True))
 
@@ -397,8 +415,6 @@ async def game_overview(game_key: str) -> None:
         (f"ent-location-{uid}", f"ent-location-{uid}", "connects to"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "parent"),
         (f"ent-location-{uid}", f"ent-bot-{uid}", "defaultLocation"),
-        (f"ent-bot-{uid}", f"ent-slot-{uid}", "botSid"),
-        (f"ent-game-{uid}", f"ent-slot-{uid}", "game_key"),
         (f"ent-location-{uid}", f"ent-camera-{uid}", "location"),
     ]
 

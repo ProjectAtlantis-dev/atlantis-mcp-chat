@@ -8,6 +8,7 @@ same way a bot's identity is its folder name.
 import atlantis
 import logging
 import os
+import re
 from typing import Dict, List
 
 from dynamic_functions.Home.common import home_path, _read_json
@@ -20,11 +21,27 @@ def _scenes_dir() -> str:
     return home_path("Game", "Scenes")
 
 
+def _scene_name(scene: str) -> str:
+    """Normalize a scene name or filename to a safe Game/Scenes key."""
+    name = str(scene or "").strip()
+    if name.endswith(".json"):
+        name = name[: -len(".json")]
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+        raise ValueError(f"Invalid scene name: {scene!r}")
+    return name
+
+
+def _scene_path(scene: str) -> str:
+    return os.path.join(_scenes_dir(), f"{_scene_name(scene)}.json")
+
+
 def _load_scene(scene: str) -> List[Dict[str, str]]:
     """Load a scene's slots — Game/Scenes/<scene>.json, an array of {name, bot_sid}."""
-    slots = _read_json(os.path.join(_scenes_dir(), f"{scene}.json"))
+    slots = _read_json(_scene_path(scene))
     if slots is None:
         raise ValueError(f"Unknown scene: {scene!r}")
+    if not isinstance(slots, list):
+        raise ValueError(f"Scene {scene!r} must be a JSON array")
     return slots
 
 

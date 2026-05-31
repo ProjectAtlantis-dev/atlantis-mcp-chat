@@ -57,30 +57,29 @@ def _parse_tool_arguments(raw_args: str, tool_key: str) -> Dict[str, Any]:
 async def run_turn(
     *,
     bot_sid: str,
-    system_prompt: str,
     transcript: List[Dict[str, Any]],
-    tools: List[AtlantisSearchToolT] = [],
+    system_prompt: Optional[str] = None,
+    roster_names: Optional[Dict[str, str]] = None,
+    tools: Optional[List[AtlantisSearchToolT]] = None,
 ) -> Optional[str]:
     """Run a streaming tool-calling turn. Loads bot config from bot_sid."""
-    # this is old bullshit needs to be pulling from bot.py
-    from dynamic_functions.Home.common import _load_bot_config
+    from dynamic_functions.Home.bot import bot_roster_name, load_bot, render_bot_prompt
 
-    loaded = _load_bot_config(bot_sid)
-    if not loaded:
-        raise ValueError(f"No bot config for bot {bot_sid}")
-    cfg, _folder = loaded
+    cfg = load_bot(bot_sid)
+    if system_prompt is None:
+        system_prompt = render_bot_prompt(bot_sid, roster_names)
 
-    api_key_env = cfg.get("apiKeyEnv", "")
+    api_key_env = cfg["apiKeyEnv"]
     api_key = os.environ.get(api_key_env, "") if api_key_env else ""
-    base_url = cfg.get("baseUrl", "") or None
-    model = cfg.get("model", "")
-    bot_display_name = cfg.get("displayName", bot_sid)
+    base_url = cfg["baseUrl"] or None
+    model = cfg["model"]
+    bot_display_name = bot_roster_name(bot_sid, roster_names)
 
     if not api_key or not model:
         raise ValueError(f"Bot {bot_sid} missing model/api key (env={api_key_env})")
 
     client = OpenAI(api_key=api_key, base_url=base_url)
-    openai_tools, tool_lookup = convert_search_tools(tools)
+    openai_tools, tool_lookup = convert_search_tools(tools or [])
     stream_talk_id = None
     stream_think_id = None
     max_turns = 10

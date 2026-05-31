@@ -46,7 +46,7 @@ def _save_cameras(game_key: str, cameras: Dict[str, Dict[str, str]]) -> None:
 def _camera_rows(game_key: str) -> List[Dict[str, str]]:
     """Pure data: outer join of standable locations against bound terminals.
 
-    Mirrors `_slot_rows` (one row per bot): exactly one row per leaf location.
+    One row per leaf location.
     Every terminal watching it — a single user's many shells, or many users — is
     stacked newline-separated in the `terminal` cell; a location nobody is
     watching gets an empty `terminal`. No client side effects.

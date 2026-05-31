@@ -8,8 +8,6 @@ game, not an error.
 import atlantis
 import logging
 
-from dynamic_functions.Home.slot import _slot_rows
-
 logger = logging.getLogger("mcp_server")
 
 _BUSY_KEY = "chat_busy"
@@ -26,12 +24,4 @@ async def tick_callback(game_key: str):
         logger.debug("tick_callback: chat busy, skipping")
         return
 
-    ai_in_world = [
-        row for row in _slot_rows(game_key)
-        if row["assignment"] == "ai" and row["currentLocation"]
-    ]
-    if not ai_in_world:
-        await atlantis.client_log("⏱ tick: no AI bots in-world")
-        return
-
-    raise NotImplementedError("tick with in-world AI bots not yet implemented")
+    raise NotImplementedError("tick_callback: slot system removed — needs reimplementation")

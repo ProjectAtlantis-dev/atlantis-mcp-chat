@@ -1,6 +1,7 @@
 """Terminal display tools"""
 
 import atlantis
+import os
 
 @public
 async def term_video(url: str) -> None:
@@ -15,6 +16,23 @@ async def term_video(url: str) -> None:
         remove_on_ended=True,
         toggle_audio=True,
     )
+
+
+def _local_video_path(video_path: str) -> str:
+    """Resolve and validate a local video path."""
+    path = str(video_path or "").strip()
+    if not path:
+        raise ValueError("video_path required")
+    path = os.path.abspath(path)
+    if not os.path.isfile(path):
+        raise ValueError(f"Video file not found: {video_path}")
+    return path
+
+
+@public
+async def term_video_file(video_path: str) -> None:
+    """Play a local terminal background video file."""
+    await term_video(_local_video_path(video_path))
 
 @public
 async def term_glass() -> None:
@@ -91,8 +109,8 @@ async def term_glass() -> None:
 """)
 
 @public
-async def term_restore() -> None:
-    """Remove frosted styling from terminal feedback bubbles."""
+async def term_default() -> None:
+    """Restore default terminal feedback bubble styling."""
     await atlantis.client_terminal_script("""
 (function(){
   var fb = document.getElementById('feedback');

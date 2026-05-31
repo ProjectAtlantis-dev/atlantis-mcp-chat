@@ -6,7 +6,6 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-# TODO: switch to slots — need slot_location, slot_occupants_at, is_bot_driven
 
 logger = logging.getLogger("mcp_client")
 
@@ -142,16 +141,12 @@ async def chat(game_key: str):
         await atlantis.client_log("No chat speaker found in transcript")
         return
 
-    # TODO: switch to slots
-    # location = slot_location(game_key, speaker_sid)
-    location = None
+    location = None  # TODO: location resolution needs reimplementation
     if not location:
         await atlantis.client_log(f"\U0001f4cd {speaker_sid} has no position — nowhere to chat")
         return
 
-    # TODO: switch to slots
-    # occupants = slot_occupants_at(game_key, location)
-    occupants = []
+    occupants = []  # TODO: occupant resolution needs reimplementation
     if not occupants:
         await atlantis.client_log(f"\U0001f4cd {speaker_sid} is alone in {location}")
         return
@@ -161,9 +156,7 @@ async def chat(game_key: str):
     for ch in occupants:
         display = ch.get("displayName", ch["occupant"])
         names.append(display)
-        # TODO: switch to slots — is_bot_driven
-        # if ch["occupant"] != speaker_sid and is_bot_driven(ch["occupant"]):
-        #     bots.append(ch)
+        # TODO: bot detection needs reimplementation
 
     await atlantis.client_log(
         f"\U0001f3e0 Room [{location}]: {', '.join(names)}"

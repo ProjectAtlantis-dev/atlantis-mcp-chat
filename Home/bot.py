@@ -10,8 +10,9 @@ import base64
 import json
 import logging
 import os
+import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Mapping, Optional, TypedDict
 
 from dynamic_functions.Home.common import _ensure_thumb, home_path, _require_str
 from dynamic_functions.Home.location import _leaf_location_keys
@@ -55,6 +56,65 @@ def _load_bot_prompt(bot_sid: str) -> str:
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read().strip()
     return ""
+
+
+_PROMPT_NAME_RE = re.compile(
+    r"\{\{\s*(?:(?P<self>name|self_name)|(?P<kind>name|bot_name)\s*:\s*(?P<sid>[A-Za-z0-9_.-]+))\s*\}\}"
+)
+_PROMPT_ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}")
+
+
+def _normalize_roster_names(roster_names: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """Normalize a finalized roster mapping of bot sid -> in-game display name."""
+    if not roster_names:
+        return {}
+
+    names: Dict[str, str] = {}
+    for raw_sid, raw_name in roster_names.items():
+        sid = str(raw_sid).strip()
+        name = str(raw_name).strip()
+        if not sid:
+            raise ValueError("Roster contains an empty bot sid")
+        if not name:
+            raise ValueError(f"Roster name for bot {sid!r} is empty")
+        _validate_bot(sid)
+        names[sid] = name
+    return names
+
+
+def bot_roster_name(bot_sid: str, roster_names: Optional[Mapping[str, str]] = None) -> str:
+    """Return the finalized in-game name for a bot sid."""
+    _validate_bot(bot_sid)
+    names = _normalize_roster_names(roster_names)
+    if bot_sid in names:
+        return names[bot_sid]
+    raw = _load_bot_json(bot_sid)
+    default_name = str(raw.get("displayName", bot_sid) or bot_sid).strip()
+    return default_name or bot_sid
+
+
+def render_bot_prompt(bot_sid: str, roster_names: Optional[Mapping[str, str]] = None) -> str:
+    """Render Game/Bots/<sid>/prompt.md with finalized roster names.
+
+    Supported placeholders:
+    - {{name}} or {{self_name}} for the current bot
+    - {{name:<sid>}} or {{bot_name:<sid>}} for another bot in the roster
+    """
+    _validate_bot(bot_sid)
+    names = _normalize_roster_names(roster_names)
+    template = _load_bot_prompt(bot_sid)
+
+    def replace_name(match: re.Match[str]) -> str:
+        referenced_sid = match.group("sid") or bot_sid
+        return bot_roster_name(referenced_sid, names)
+
+    rendered = _PROMPT_NAME_RE.sub(replace_name, template)
+    unresolved = _PROMPT_ANY_PLACEHOLDER_RE.search(rendered)
+    if unresolved:
+        raise ValueError(
+            f"Unsupported prompt placeholder {unresolved.group(0)!r} in bot {bot_sid!r}"
+        )
+    return rendered
 
 
 def _validate_default_location(bot_sid: str, location: str) -> None:
@@ -111,7 +171,8 @@ def _bot_rows() -> List[Dict[str, Any]]:
             "displayName": bot_data.get("displayName", entry),
             "image": image_data,
             "defaultLocation": default_location,
-            "prompt": _load_bot_prompt(entry),
+            "prompt": render_bot_prompt(entry),
+            "promptTemplate": _load_bot_prompt(entry),
             "model": model_label,
             "updated": updated,
         })
@@ -124,8 +185,21 @@ async def bot_list() -> List[Dict[str, Any]]:
     bots = _bot_rows()
     await atlantis.client_data("Bots", bots, column_formatter={
         "prompt": {"type": "markdown", "maxWidth": "80ch"},
+        "promptTemplate": {"type": "markdown", "maxWidth": "80ch"},
     })
     return bots
+
+
+@public
+async def prompt_assemble(bot_sid: str, roster_names: Optional[Dict[str, str]] = None) -> str:
+    """Render a bot prompt using a finalized roster mapping of bot sid -> desired name."""
+    return render_bot_prompt(bot_sid, roster_names)
+
+
+@public
+async def prompt_aassemble(bot_sid: str, roster_names: Optional[Dict[str, str]] = None) -> str:
+    """Backward-compatible typo alias for prompt_assemble."""
+    return await prompt_assemble(bot_sid, roster_names)
 
 
 def bot_default_location(bot_sid: str) -> Optional[str]:
