@@ -126,9 +126,17 @@ async def game_init():
         callbacks = await atlantis.client_command("/callback list")
         chat_row = next(row for row in callbacks if row["mode"] == "chat")
 
-    await atlantis.client_log(
-        f"chat callback: toolPath={chat_row['toolPath']!r} filename={chat_row['filename']!r}"
-    )
+    await atlantis.client_log(f"chat callback: toolPath={chat_row['toolPath']!r} filename={chat_row['filename']!r}")
+
+    await atlantis.client_log(f"Getting scenes")
+    scenes = await atlantis.client_command("@scene_list")
+    if not scenes:
+        raise RuntimeError("No scenes found")
+    scene = scenes[0]
+    roster = await atlantis.client_command(f"@roster_create {scene}")
+    await atlantis.client_log(f"game scene: {scene!r}")
+    if roster:
+        await atlantis.client_command(f"@roster_bind {roster[0]['key']}")
 
     #await term_video("https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/notLove_mobile.mp4")
 

@@ -2,6 +2,7 @@
 
 import atlantis
 import os
+import shlex
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -69,6 +70,11 @@ def _load_game_roster(game_key: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _write_game_roster(game_key: str, rows: List[Dict[str, Any]]) -> None:
+    data_dir = require_membership(game_key)
+    _write_json(os.path.join(data_dir, "roster.json"), rows)
+
+
 def _roster_rows() -> List[Dict[str, Any]]:
     """Pure data for roster_list: generated roster rows for every scene."""
     rows: List[Dict[str, Any]] = []
@@ -106,6 +112,56 @@ async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
     _write_json(os.path.join(data_dir, "game.json"), meta)
     await atlantis.client_data(f"{game_key} roster", rows)
     return rows
+
+
+@public
+async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
+    """Bind the caller's Atlantis session to a slot in this game's roster."""
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+
+    slot_key = str(slot_key or "").strip()
+    if not slot_key:
+        raise ValueError("slot_key required")
+    display_name = await atlantis.client_command(
+        "@modal_string "
+        f"{shlex.quote('What should people call you?')} "
+        f"{shlex.quote('Your name')} "
+        f"{shlex.quote('')} "
+        f"{shlex.quote('Join')}"
+    )
+    if display_name is None:
+        return {"cancelled": True, "key": slot_key}
+    display_name = str(display_name or "").strip()
+    if not display_name:
+        raise ValueError("display_name required")
+
+    rows = _load_game_roster(game_key)
+    target = None
+    for row in rows:
+        if row.get("session_key") == session_key and row.get("key") != slot_key:
+            raise RuntimeError(f"Session is already bound to slot {row.get('key')!r}")
+        if str(row.get("key", "")).strip() == slot_key:
+            target = row
+
+    if target is None:
+        raise ValueError(f"Unknown roster slot: {slot_key!r}")
+
+    existing_session = str(target.get("session_key", "") or "").strip()
+    if existing_session and existing_session != session_key:
+        raise RuntimeError(f"Slot {slot_key!r} is already bound")
+
+    target["session_key"] = session_key
+    target["sid"] = atlantis.get_caller() or ""
+    target["user_game_id"] = atlantis.get_user_game_id()
+    target["ai"] = False
+    target["displayName"] = display_name
+    target["bound_at"] = datetime.now().isoformat(timespec="seconds")
+
+    _write_game_roster(game_key, rows)
+    await atlantis.client_data(f"{game_key} roster", rows)
+    return target
 
 
 @public
