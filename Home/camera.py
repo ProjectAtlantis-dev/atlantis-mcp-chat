@@ -14,12 +14,12 @@ import atlantis
 import os
 from typing import Any, Dict, List
 
-from dynamic_functions.Home.common import (
+from .common import (
     _read_json,
     _write_json,
 )
-from dynamic_functions.Home.game import require_game_dir, require_membership
-from dynamic_functions.Home.location import (
+from .game import require_game_dir, require_membership
+from .location import (
     _leaf_location_keys,
     _load_location,
     _require_leaf,

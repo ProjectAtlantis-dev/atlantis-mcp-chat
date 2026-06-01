@@ -5,10 +5,10 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
-from dynamic_functions.Home.bot import load_bot
-from dynamic_functions.Home.common import _read_json, _write_json
-from dynamic_functions.Home.game import require_membership
-from dynamic_functions.Home.scene import _load_scene, _scene_name, _scene_names
+from .bot import load_bot
+from .common import _read_json, _write_json
+from .game import require_membership
+from .scene import _load_scene, _scene_name, _scene_names
 
 
 def _number_duplicate_display_names(rows: List[Dict[str, Any]]) -> None:

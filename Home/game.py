@@ -8,11 +8,11 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from dynamic_functions.Home.common import home_path, _read_json, _write_json
-from dynamic_functions.Home.location import _location_rows
+from .common import home_path, _read_json, _write_json
+from .location import _location_rows
 
-from dynamic_functions.Home.bot import _bot_rows
-from dynamic_functions.Home.term import term_video, term_video_file
+from .bot import _bot_rows
+from .term import term_video, term_video_file
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +280,7 @@ async def game_password(game_key: str, new_password: str) -> None:
 @public
 async def game_join_interactive(game_key: str) -> Dict[str, Any]:
     """Prompt the caller for the join password, then call game_join."""
-    from dynamic_functions.Home.modal import modal_string
+    from .modal import modal_string
 
     if not game_key:
         raise ValueError("game_key required")
@@ -376,9 +376,9 @@ async def game_rejoin(game_key: str):
 @visible
 async def game_overview(game_key: str) -> None:
     """Show the game state diagram — scenes, roster, bots, locations, and cameras."""
-    from dynamic_functions.Home.camera import _camera_rows
-    from dynamic_functions.Home.roster import _roster_rows
-    from dynamic_functions.Home.scene import _scene_rows
+    from .camera import _camera_rows
+    from .roster import _roster_rows
+    from .scene import _scene_rows
     data_dir = require_membership(game_key)
 
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}

@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 
-from dynamic_functions.Home.common import _ensure_thumb, home_path, _require_str
+from .common import _ensure_thumb, home_path, _require_str
 
 logger = logging.getLogger("mcp_server")
 
@@ -273,4 +273,3 @@ async def location_list() -> List[Dict[str, str]]:
 # instead. "Terminal at a location" is the only viewing concept now.
 
 # Facility map moved to location_map.py
-

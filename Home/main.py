@@ -1,7 +1,7 @@
 """Home app tools"""
 
 import atlantis
-from dynamic_functions.Home.tool import logger
+from .tool import logger
 
 
 @visible

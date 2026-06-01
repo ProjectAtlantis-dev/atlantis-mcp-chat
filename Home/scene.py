@@ -11,8 +11,8 @@ import os
 import re
 from typing import Any, Dict, List
 
-from dynamic_functions.Home.common import home_path, _read_json
-from dynamic_functions.Home.bot import load_bot
+from .common import home_path, _read_json
+from .bot import load_bot
 
 logger = logging.getLogger("mcp_server")
 

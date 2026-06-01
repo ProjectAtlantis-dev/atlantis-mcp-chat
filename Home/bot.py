@@ -14,8 +14,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, TypedDict
 
-from dynamic_functions.Home.common import _ensure_thumb, home_path, _require_str
-from dynamic_functions.Home.location import _leaf_location_keys
+from .common import _ensure_thumb, home_path, _require_str
+from .location import _leaf_location_keys
 
 logger = logging.getLogger("mcp_server")
 

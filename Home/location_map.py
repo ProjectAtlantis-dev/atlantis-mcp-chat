@@ -7,7 +7,7 @@ import os
 import uuid
 from typing import Any, Dict, List
 
-from dynamic_functions.Home.location import (
+from .location import (
     _child_locations,
     _is_leaf,
     _load_location,

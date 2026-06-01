@@ -4,12 +4,12 @@ import atlantis
 import logging
 import os
 
-from dynamic_functions.Home.chat import (
+from .chat import (
     analyze_participants, fetch_transcript,
 )
-from dynamic_functions.Home.common import _read_json
-from dynamic_functions.Home.game import _game_roster_scene, require_game_dir
-from dynamic_functions.Home.turn import bot_turn
+from .common import _read_json
+from .game import _game_roster_scene, require_game_dir
+from .turn import bot_turn
 
 logger = logging.getLogger("mcp_server")
 
