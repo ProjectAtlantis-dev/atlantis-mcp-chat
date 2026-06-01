@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from .bot import load_bot
 from .common import _read_json, _write_json
 from .game import require_membership
+from .location import _require_leaf, load_location
 from .scene import _load_scene, _scene_name
 
 
@@ -53,6 +54,8 @@ def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
             "bot_sid": bot_sid,
             "ai": True,
             "displayName": bot["displayName"],
+            "location": "",
+            "spawned_at": "",
             "session_key": "",
             "sid": "",
             "user_game_id": "",
@@ -74,16 +77,72 @@ def _load_game_roster(game_key: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _find_roster_row(rows: List[Dict[str, Any]], sid_or_key: str) -> Dict[str, Any]:
+    """Find one roster row by slot key, human sid, or AI bot sid."""
+    needle = str(sid_or_key or "").strip()
+    if not needle:
+        raise ValueError("sid required")
+
+    matches: List[Dict[str, Any]] = []
+    for row in rows:
+        candidates = [str(row.get("key", "")).strip()]
+        if row.get("ai") is False:
+            candidates.append(str(row.get("sid", "")).strip())
+        else:
+            candidates.append(str(row.get("bot_sid", "")).strip())
+        if needle in candidates:
+            matches.append(row)
+
+    if not matches:
+        raise ValueError(f"Unknown roster sid or slot: {needle!r}")
+    if len(matches) > 1:
+        keys = ", ".join(str(row.get("key", "")) for row in matches)
+        raise ValueError(f"Roster id {needle!r} is ambiguous; use one of these slot keys: {keys}")
+    return matches[0]
+
+
 def _write_game_roster(game_key: str, rows: List[Dict[str, Any]]) -> None:
     data_dir = require_membership(game_key)
     _write_json(os.path.join(data_dir, "roster.json"), rows)
+
+
+def _roster_rows() -> List[Dict[str, Any]]:
+    """Pure data: scene roster definitions. No client side effects."""
+    rows: List[Dict[str, Any]] = []
+    from .scene import _scene_names
+
+    for scene_name in _scene_names():
+        for row in _scene_roster_rows(scene_name):
+            out = dict(row)
+            out["scene_name"] = scene_name
+            rows.append(out)
+    return rows
+
+
+def _display_roster_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Project live roster rows into the table order shown to users."""
+    columns = [
+        "key",
+        "bot_sid",
+        "ai",
+        "displayName",
+        "sid",
+        "location",
+        "session_key",
+        "bound_at",
+        "spawned_at",
+    ]
+    return [
+        {column: row.get(column, "") for column in columns}
+        for row in rows
+    ]
 
 
 @public
 async def roster_list(game_key: str) -> List[Dict[str, Any]]:
     """Show this game's live roster.json, including any roster_bind changes."""
     rows = _load_game_roster(game_key)
-    await atlantis.client_data(f"{game_key} roster", rows)
+    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
     return rows
 
 
@@ -102,7 +161,7 @@ async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
     _write_json(os.path.join(data_dir, "game.json"), meta)
-    await atlantis.client_data(f"{game_key} roster", rows)
+    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
     return rows
 
 
@@ -157,8 +216,53 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
 
     _write_game_roster(game_key, rows)
     await atlantis.client_log(f"Saved roster binding for {game_key!r} slot {slot_key!r}")
-    await atlantis.client_data(f"{game_key} roster slot", target)
-    await atlantis.client_data(f"{game_key} roster", rows)
+    await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
+    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    return target
+
+
+@public
+async def spawn(game_key: str, sid: str, location: str) -> Dict[str, Any]:
+    """Place a roster entry in a Location.
+
+    `sid` may be a roster slot key, a bound human sid, or an AI bot sid. If a
+    bot sid appears more than once in the roster, use the slot key.
+    """
+    load_location(location)
+    _require_leaf(location)
+
+    rows = _load_game_roster(game_key)
+    target = _find_roster_row(rows, sid)
+    previous = str(target.get("location", "") or "")
+    target["location"] = location
+    target["spawned_at"] = datetime.now().isoformat(timespec="seconds")
+
+    _write_game_roster(game_key, rows)
+    await atlantis.client_log(
+        f"spawn: {target.get('displayName', sid)} -> {location}"
+        + (f" from {previous}" if previous and previous != location else "")
+    )
+    await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
+    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    return target
+
+
+@public
+async def despawn(game_key: str, sid: str) -> Dict[str, Any]:
+    """Remove a roster entry from its current Location."""
+    rows = _load_game_roster(game_key)
+    target = _find_roster_row(rows, sid)
+    previous = str(target.get("location", "") or "")
+    target["location"] = ""
+    target["spawned_at"] = ""
+
+    _write_game_roster(game_key, rows)
+    await atlantis.client_log(
+        f"despawn: {target.get('displayName', sid)}"
+        + (f" from {previous}" if previous else "")
+    )
+    await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
+    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
     return target
 
 

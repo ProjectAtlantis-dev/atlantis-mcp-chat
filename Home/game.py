@@ -386,7 +386,7 @@ async def game_rejoin(game_key: str):
 async def game_overview(game_key: str) -> None:
     """Show the game state diagram — scenes, roster, bots, locations, and cameras."""
     from .camera import _camera_rows
-    from .roster import _roster_rows
+    from .roster import _display_roster_rows, _load_game_roster
     from .scene import _scene_rows
     data_dir = require_membership(game_key)
 
@@ -396,7 +396,7 @@ async def game_overview(game_key: str) -> None:
     loc_rows = _location_rows()
     camera_rows = _camera_rows(game_key)
     scene_rows = _scene_rows()
-    roster_rows = _roster_rows()
+    roster_rows = _display_roster_rows(_load_game_roster(game_key))
 
     # Build an HTML table
     def _trunc(s, n=40):
@@ -434,8 +434,18 @@ async def game_overview(game_key: str) -> None:
     tables.append(_table("ent-game", "GAME", ["key", "roster_scene"], [[game_key, roster_scene]], dynamic=True))
     tables.append(_table("ent-scene", "SCENE", ["name", "slots"],
         [[s["name"], s["slots"]] for s in scene_rows]))
-    tables.append(_table("ent-roster", "ROSTER", ["scene_name", "key", "displayName", "bot_sid", "ai"],
-        [[r.get("scene_name", ""), r.get("key", ""), r.get("displayName", ""), r.get("bot_sid", ""), r.get("ai", "")] for r in roster_rows],
+    tables.append(_table("ent-roster", "ROSTER", ["key", "bot_sid", "ai", "displayName", "sid", "location", "session_key", "bound_at", "spawned_at"],
+        [[
+            r.get("key", ""),
+            r.get("bot_sid", ""),
+            r.get("ai", ""),
+            r.get("displayName", ""),
+            r.get("sid", ""),
+            r.get("location", ""),
+            r.get("session_key", ""),
+            r.get("bound_at", ""),
+            r.get("spawned_at", ""),
+        ] for r in roster_rows],
         dynamic=True,
         tone="green"))
     tables.append(_table("ent-bot", "BOT", ["sid", "displayName", "defaultLocation", "model"],
@@ -450,11 +460,12 @@ async def game_overview(game_key: str) -> None:
     relationships = [
         (f"ent-game-{uid}", f"ent-roster-{uid}", "has roster"),
         (f"ent-game-{uid}", f"ent-camera-{uid}", "has cameras"),
-        (f"ent-roster-{uid}", f"ent-scene-{uid}", "scene_name"),
+        (f"ent-game-{uid}", f"ent-scene-{uid}", "roster_scene"),
         (f"ent-roster-{uid}", f"ent-bot-{uid}", "bot_sid"),
+        (f"ent-roster-{uid}", f"ent-location-{uid}", "location"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "connects to"),
         (f"ent-location-{uid}", f"ent-location-{uid}", "parent"),
-        (f"ent-location-{uid}", f"ent-bot-{uid}", "defaultLocation"),
+        (f"ent-bot-{uid}", f"ent-location-{uid}", "defaultLocation"),
         (f"ent-location-{uid}", f"ent-camera-{uid}", "location"),
     ]
 

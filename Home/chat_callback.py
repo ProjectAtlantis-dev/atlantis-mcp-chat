@@ -71,17 +71,37 @@ async def _handle_chat(game_key: str):
 
     roster = _load_game_roster(game_key)
     speaker = _find_roster_speaker(roster, speaker_sid)
+    if not speaker:
+        raise RuntimeError(f"Chat speaker {speaker_sid!r} is not in this game's roster")
+
+    location = str(speaker.get("location", "") or "").strip()
+    if not location:
+        raise RuntimeError(f"Chat speaker {speaker_sid!r} has not spawned into a location yet")
+
+    occupants = _location_occupants(roster, location)
+    if not occupants:
+        await atlantis.client_log(f"Room [{location}] is empty")
+        return
+    await atlantis.client_log(
+        f"Room [{location}]: {', '.join(_display_name(row) for row in occupants)}"
+    )
+    if len(occupants) == 1:
+        await atlantis.client_log(f"{_display_name(speaker)} is alone in {location}")
+        return
+
     loop_count = _next_loop_count(game_key, speaker)
     if loop_count > _MAX_BOT_CHAIN:
         logger.debug("chat_callback bot chain limit reached, skipping")
         return
 
+    # Convo rule: among the speaker's current room occupants, pick the first AI
+    # roster member that did not just speak.
     bots = [
-        row for row in roster
-        if _is_ai(row) and row.get("bot_sid") and row.get("key") != (speaker or {}).get("key")
+        row for row in occupants
+        if _is_ai(row) and row.get("bot_sid") and row.get("key") != speaker.get("key")
     ]
     if not bots:
-        await atlantis.client_log("No AI roster member available to respond")
+        await atlantis.client_log(f"No AI roster member in {location} available to respond")
         return
 
     bot_record = bots[0]
@@ -120,6 +140,17 @@ def _last_chat_signature(raw_transcript: List[Dict[str, Any]]) -> str:
 
 def _is_ai(row: Dict[str, Any]) -> bool:
     return row.get("ai") is not False
+
+
+def _display_name(row: Dict[str, Any]) -> str:
+    return str(row.get("displayName") or row.get("bot_sid") or row.get("sid") or row.get("key") or "unknown")
+
+
+def _location_occupants(roster: List[Dict[str, Any]], location: str) -> List[Dict[str, Any]]:
+    return [
+        row for row in roster
+        if str(row.get("location", "") or "").strip() == location
+    ]
 
 
 def _find_roster_speaker(roster: List[Dict[str, Any]], speaker_sid: str) -> Optional[Dict[str, Any]]:
