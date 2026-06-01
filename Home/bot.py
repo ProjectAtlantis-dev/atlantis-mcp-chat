@@ -58,9 +58,7 @@ def _load_bot_prompt(bot_sid: str) -> str:
     return ""
 
 
-_PROMPT_NAME_RE = re.compile(
-    r"\{\{\s*(?:(?P<self>name|self_name)|(?P<kind>name|bot_name)\s*:\s*(?P<sid>[A-Za-z0-9_.-]+))\s*\}\}"
-)
+_PROMPT_BOT_RE = re.compile(r"\{\{\s*(?P<sid>[A-Za-z0-9_.-]+)\s*\}\}")
 _PROMPT_ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}")
 
 
@@ -97,18 +95,17 @@ def render_bot_prompt(bot_sid: str, roster_names: Optional[Mapping[str, str]] = 
     """Render Game/Bots/<sid>/prompt.md with finalized roster names.
 
     Supported placeholders:
-    - {{name}} or {{self_name}} for the current bot
-    - {{name:<sid>}} or {{bot_name:<sid>}} for another bot in the roster
+    - {{<sid>}} for any bot in the roster, including the current bot
     """
     _validate_bot(bot_sid)
     names = _normalize_roster_names(roster_names)
     template = _load_bot_prompt(bot_sid)
 
-    def replace_name(match: re.Match[str]) -> str:
-        referenced_sid = match.group("sid") or bot_sid
+    def replace_bot(match: re.Match[str]) -> str:
+        referenced_sid = match.group("sid")
         return bot_roster_name(referenced_sid, names)
 
-    rendered = _PROMPT_NAME_RE.sub(replace_name, template)
+    rendered = _PROMPT_BOT_RE.sub(replace_bot, template)
     unresolved = _PROMPT_ANY_PLACEHOLDER_RE.search(rendered)
     if unresolved:
         raise ValueError(
@@ -172,7 +169,6 @@ def _bot_rows() -> List[Dict[str, Any]]:
             "image": image_data,
             "defaultLocation": default_location,
             "prompt": render_bot_prompt(entry),
-            "promptTemplate": _load_bot_prompt(entry),
             "model": model_label,
             "updated": updated,
         })
@@ -185,7 +181,6 @@ async def bot_list() -> List[Dict[str, Any]]:
     bots = _bot_rows()
     await atlantis.client_data("Bots", bots, column_formatter={
         "prompt": {"type": "markdown", "maxWidth": "80ch"},
-        "promptTemplate": {"type": "markdown", "maxWidth": "80ch"},
     })
     return bots
 
