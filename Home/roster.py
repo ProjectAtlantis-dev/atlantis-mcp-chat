@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from .bot import load_bot
 from .common import _read_json, _write_json
 from .game import require_membership
-from .scene import _load_scene, _scene_name, _scene_names
+from .scene import _load_scene, _scene_name
 
 
 def _number_duplicate_display_names(rows: List[Dict[str, Any]]) -> None:
@@ -53,6 +53,10 @@ def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
             "bot_sid": bot_sid,
             "ai": True,
             "displayName": bot["displayName"],
+            "session_key": "",
+            "sid": "",
+            "user_game_id": "",
+            "bound_at": "",
         })
     return rows
 
@@ -75,30 +79,18 @@ def _write_game_roster(game_key: str, rows: List[Dict[str, Any]]) -> None:
     _write_json(os.path.join(data_dir, "roster.json"), rows)
 
 
-def _roster_rows() -> List[Dict[str, Any]]:
-    """Pure data for roster_list: generated roster rows for every scene."""
-    rows: List[Dict[str, Any]] = []
-    for scene_name in _scene_names():
-        scene_rows = _scene_roster_rows(scene_name)
-        _number_duplicate_display_names(scene_rows)
-        rows.extend({
-            "scene_name": scene_name,
-            **row,
-        } for row in scene_rows)
-    return rows
-
-
 @public
-async def roster_list() -> List[Dict[str, Any]]:
-    """Show all generated roster rows, grouped by source scene filename."""
-    rows = _roster_rows()
-    await atlantis.client_data("Rosters", rows)
+async def roster_list(game_key: str) -> List[Dict[str, Any]]:
+    """Show this game's live roster.json, including any roster_bind changes."""
+    rows = _load_game_roster(game_key)
+    await atlantis.client_data(f"{game_key} roster", rows)
     return rows
 
 
 @public
 async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
     """Create Data/games/<game_key>/roster.json from a static scene file."""
+    await atlantis.client_log(f"roster_create game_key: {game_key!r} scene: {scene!r}")
     data_dir = require_membership(game_key)
     scene_name = _scene_name(scene)
     rows = _scene_roster_rows(scene)
@@ -120,22 +112,13 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     session_key = atlantis.get_session_key()
     if not session_key:
         raise RuntimeError("No session key in this call context")
+    await atlantis.client_log(
+        f"roster_bind game_key: {game_key!r} slot_key: {slot_key!r} session_key: {session_key!r}"
+    )
 
     slot_key = str(slot_key or "").strip()
     if not slot_key:
         raise ValueError("slot_key required")
-    display_name = await atlantis.client_command(
-        "@modal_string "
-        f"{shlex.quote('What should people call you?')} "
-        f"{shlex.quote('Your name')} "
-        f"{shlex.quote('')} "
-        f"{shlex.quote('Join')}"
-    )
-    if display_name is None:
-        return {"cancelled": True, "key": slot_key}
-    display_name = str(display_name or "").strip()
-    if not display_name:
-        raise ValueError("display_name required")
 
     rows = _load_game_roster(game_key)
     target = None
@@ -152,6 +135,19 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     if existing_session and existing_session != session_key:
         raise RuntimeError(f"Slot {slot_key!r} is already bound")
 
+    display_name = await atlantis.client_command(
+        "@modal_string "
+        f"{shlex.quote('What should people call you?')} "
+        f"{shlex.quote('Your name')} "
+        f"{shlex.quote('')} "
+        f"{shlex.quote('Join')}"
+    )
+    if display_name is None:
+        return {"cancelled": True, "key": slot_key}
+    display_name = str(display_name or "").strip()
+    if not display_name:
+        raise ValueError("display_name required")
+
     target["session_key"] = session_key
     target["sid"] = atlantis.get_caller() or ""
     target["user_game_id"] = atlantis.get_user_game_id()
@@ -160,6 +156,8 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     target["bound_at"] = datetime.now().isoformat(timespec="seconds")
 
     _write_game_roster(game_key, rows)
+    await atlantis.client_log(f"Saved roster binding for {game_key!r} slot {slot_key!r}")
+    await atlantis.client_data(f"{game_key} roster slot", target)
     await atlantis.client_data(f"{game_key} roster", rows)
     return target
 
@@ -167,6 +165,4 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
 @public
 async def roster_show(game_key: str) -> List[Dict[str, Any]]:
     """Show Data/games/<game_key>/roster.json, if a scene roster has been created."""
-    rows = _load_game_roster(game_key)
-    await atlantis.client_data(f"{game_key} roster", rows)
-    return rows
+    return await roster_list(game_key)

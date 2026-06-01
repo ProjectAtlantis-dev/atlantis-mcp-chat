@@ -161,7 +161,7 @@ async def modal_string(
     cleanup();
     if (!window._accessToken) return;
     try {{
-      await sendChatter(window._accessToken, "$**Home**modal_string_cancel", {{
+      await sendChatter(window._accessToken, "@modal_string_cancel", {{
         modal_string_id: {modal_string_id_js}
       }}, {exec_shell_js});
     }} catch (e) {{}}
@@ -187,7 +187,7 @@ async def modal_string(
       button.textContent = {submitting_label_js};
       settled = true;
       cleanup();
-      await sendChatter(window._accessToken, "$**Home**modal_string_click", {{
+      await sendChatter(window._accessToken, "@modal_string_click", {{
         modal_string_id: {modal_string_id_js},
         display_name: value
       }}, {exec_shell_js});

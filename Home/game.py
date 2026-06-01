@@ -114,6 +114,7 @@ async def game_init():
     """Create a new game, then capture its keys server-side via the cursor."""
     keys = await game_new()
     await atlantis.client_command("/cursor join", keys)
+    await atlantis.client_log(f"game_init game_key: {keys['game_key']!r}")
 
     callbacks = await atlantis.client_command("/callback list")
     chat_row = next(row for row in callbacks if row["mode"] == "chat")
