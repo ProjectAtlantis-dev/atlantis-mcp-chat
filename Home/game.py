@@ -48,6 +48,10 @@ def create_game_dir(game_key: str) -> str:
 
 def _game_roster_scene(meta: Dict[str, Any]) -> Optional[str]:
     """Return the chosen roster scene, if assigned."""
+    roster_scene = str(meta.get("roster_scene") or "").strip()
+    if roster_scene:
+        return roster_scene
+
     roster = meta.get("roster") or {}
     if isinstance(roster, dict):
         scene = str(roster.get("scene", "") or "").strip()
@@ -70,12 +74,12 @@ def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
     if session_key in members:
         raise RuntimeError(f"Session is already a member: {session_key}")
 
-    shell = atlantis.get_caller_shell_path() or ""
+    shell = atlantis.get_caller_shell_path()
     if shell and any(rec.get("shell") == shell for rec in members.values()):
         raise RuntimeError(f"Shell is already a member: {shell}")
 
     members[session_key] = {
-        "sid": atlantis.get_caller() or "",
+        "sid": atlantis.get_caller() or None,
         "user_game_id": atlantis.get_user_game_id(),
         "shell": shell,
         "joined_at": datetime.now().isoformat(timespec="seconds"),
@@ -180,8 +184,10 @@ async def game_new() -> Dict[str, Any]:
     join_password = uuid.uuid4().hex
     _write_json(os.path.join(data_dir, 'game.json'), {
         'join_password': join_password,
-        'owner': atlantis.get_caller() or '',
+        'owner': atlantis.get_caller() or None,
         'user_game_id': atlantis.get_user_game_id(),
+        'roster_scene': None,
+        'roster_created_at': None,
         'members': add_caller_membership({}),
     })
 
@@ -218,8 +224,8 @@ async def game_list() -> list:
         entries.append({
             "game_key": name,
             "user_game_id": meta.get("user_game_id"),
-            "owner": meta.get("owner", ""),
-            "roster": _game_roster_scene(meta) or "",
+            "owner": meta.get("owner"),
+            "roster_scene": _game_roster_scene(meta),
             "created": datetime.fromtimestamp(ts).isoformat(timespec="seconds"),
             "_ts": ts,
         })
@@ -245,7 +251,7 @@ async def game_show(game_key: str) -> dict:
         return {
             "game_key": game_key,
             "owner": owner,
-            "roster": roster,
+            "roster_scene": roster,
             "members": sids,
             "created": created,
         }
@@ -254,15 +260,16 @@ async def game_show(game_key: str) -> dict:
         "game_key": game_key,
         "user_game_id": meta.get("user_game_id"),
         "owner": owner,
-        "roster": roster,
+        "roster_scene": roster,
+        "roster_created_at": meta.get("roster_created_at"),
         "join_password": meta.get("join_password", ""),
         "members": [
             {
                 "session_key": session_key,
-                "sid": rec.get("sid", ""),
-                "shell": rec.get("shell", ""),
+                "sid": rec.get("sid"),
+                "shell": rec.get("shell"),
                 "user_game_id": rec.get("user_game_id"),
-                "joined_at": rec.get("joined_at", ""),
+                "joined_at": rec.get("joined_at"),
             }
             for session_key, rec in members.items()
         ],
@@ -391,7 +398,7 @@ async def game_overview(game_key: str) -> None:
     data_dir = require_membership(game_key)
 
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}
-    roster_scene = _game_roster_scene(meta) or ""
+    roster_scene = _game_roster_scene(meta)
     bot_rows = _bot_rows()
     loc_rows = _location_rows()
     camera_rows = _camera_rows(game_key)

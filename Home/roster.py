@@ -16,10 +16,12 @@ from .scene import _load_scene, _scene_name
 def _number_duplicate_display_names(rows: List[Dict[str, Any]]) -> None:
     used: set[str] = set()
     for row in rows:
-        display_name = str(row.get("displayName", "")).strip()
-        key = str(row.get("key", "")).strip()
+        raw_display_name = row.get("displayName")
+        if raw_display_name is None:
+            continue
+        display_name = str(raw_display_name).strip()
         if not display_name:
-            raise ValueError(f"Roster row {key!r} is missing displayName")
+            continue
 
         if display_name not in used:
             used.add(display_name)
@@ -48,18 +50,18 @@ def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
         if not bot_sid:
             raise ValueError(f"Scene {scene!r} row {index} is missing bot_sid")
 
-        bot = load_bot(bot_sid)
+        load_bot(bot_sid)
         rows.append({
             "key": key,
             "bot_sid": bot_sid,
             "ai": True,
-            "displayName": bot["displayName"],
-            "location": "",
-            "spawned_at": "",
-            "session_key": "",
-            "sid": "",
-            "user_game_id": "",
-            "bound_at": "",
+            "displayName": None,
+            "location": None,
+            "spawned_at": None,
+            "session_key": None,
+            "sid": None,
+            "user_game_id": None,
+            "bound_at": None,
         })
     return rows
 
@@ -156,10 +158,9 @@ async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
     _number_duplicate_display_names(rows)
     _write_json(os.path.join(data_dir, "roster.json"), rows)
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}
-    meta["roster"] = {
-        "scene": scene_name,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-    }
+    meta["roster_scene"] = scene_name
+    meta["roster_created_at"] = datetime.now().isoformat(timespec="seconds")
+    meta.pop("roster", None)
     _write_json(os.path.join(data_dir, "game.json"), meta)
     await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
     return rows
@@ -208,7 +209,7 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
         raise ValueError("display_name required")
 
     target["session_key"] = session_key
-    target["sid"] = atlantis.get_caller() or ""
+    target["sid"] = atlantis.get_caller() or None
     target["user_game_id"] = atlantis.get_user_game_id()
     target["ai"] = False
     target["displayName"] = display_name
@@ -222,7 +223,7 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
 
 
 @public
-async def spawn(game_key: str, sid: str, location: str) -> Dict[str, Any]:
+async def roster_spawn(game_key: str, sid: str, location: str) -> Dict[str, Any]:
     """Place a roster entry in a Location.
 
     `sid` may be a roster slot key, a bound human sid, or an AI bot sid. If a
@@ -248,13 +249,13 @@ async def spawn(game_key: str, sid: str, location: str) -> Dict[str, Any]:
 
 
 @public
-async def despawn(game_key: str, sid: str) -> Dict[str, Any]:
+async def roster_despawn(game_key: str, sid: str) -> Dict[str, Any]:
     """Remove a roster entry from its current Location."""
     rows = _load_game_roster(game_key)
     target = _find_roster_row(rows, sid)
     previous = str(target.get("location", "") or "")
-    target["location"] = ""
-    target["spawned_at"] = ""
+    target["location"] = None
+    target["spawned_at"] = None
 
     _write_game_roster(game_key, rows)
     await atlantis.client_log(
