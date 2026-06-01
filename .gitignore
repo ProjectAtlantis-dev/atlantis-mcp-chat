@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 Data/
 *_thumb.jpg
+Home/api_payload.json
+cloud.log
+mcp.log

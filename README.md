@@ -2,6 +2,8 @@ This set of folders is essentially a multiuser human + bot chat system (game = c
 
 These files are dynamically loaded by the Atlantis MCP system (~/work/aud/atlantis-mcp-server) but we are NOT allowed to modify that system!!
 
+MCP server log: ~/work/aud/atlantis-mcp-server/python-server/runServer.log
+
 The MCP loader will publish functions according to the various decorators. These functions can also interact with the Atlantis cloud system () via atlantis.xxx library usually to run commands because it's better to just run commands directly than overload atlantis.py with methods that do the same thing.
 
 The /Data folder holds live data for each game

@@ -78,6 +78,10 @@ async def run_turn(
     if not api_key or not model:
         raise ValueError(f"Bot {bot_sid} missing model/api key (env={api_key_env})")
 
+    await atlantis.client_log(
+        f"run_turn start: bot_sid={bot_sid!r} display={bot_display_name!r} "
+        f"model={model!r} transcript={len(transcript)} tools={len(tools or [])}"
+    )
     client = OpenAI(api_key=api_key, base_url=base_url)
     openai_tools, tool_lookup = convert_search_tools(tools or [])
     stream_talk_id = None
@@ -94,6 +98,26 @@ async def run_turn(
             ] + transcript
 
             logger.info(f"Sending to {model}: {len(api_messages)} messages, {len(openai_tools)} tools")
+            await atlantis.client_log(
+                f"run_turn api call: model={model!r} messages={len(api_messages)} tools={len(openai_tools)}"
+            )
+
+            api_dump_file = os.path.join(os.path.dirname(__file__), "api_payload.json")
+            try:
+                with open(api_dump_file, "w") as f:
+                    json.dump(
+                        {
+                            "model": model,
+                            "messages": api_messages,
+                            "tools": openai_tools,
+                            "turn": turn_count,
+                        },
+                        f,
+                        indent=2,
+                        default=str,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to write API payload: {e}")
 
             # Call LLM
             tool_calls_accumulator: Dict[int, Dict[str, Any]] = {}
@@ -104,13 +128,14 @@ async def run_turn(
             stream = client.chat.completions.create(
                 model=model,
                 messages=cast(Any, api_messages),
-                tools=openai_tools,  # type: ignore[arg-type]
+                tools=openai_tools if openai_tools else None,  # type: ignore[arg-type]
                 tool_choice=cast(Any, "auto" if openai_tools else None),
                 stream=True,
                 max_tokens=16000,
                 extra_body={"reasoning": {"effort": "low"}},
             )
             logger.info(f"Stream opened in {_t.monotonic() - t_api:.2f}s")
+            await atlantis.client_log(f"run_turn stream opened: model={model!r}")
 
             for chunk in stream:
                 if not chunk.choices:
@@ -157,6 +182,10 @@ async def run_turn(
                                 acc['arguments'] += tc.function.arguments
 
             logger.info(f"Stream done: turn={turn_count} chunks={streamed_count} tool_calls={len(tool_calls_accumulator)}")
+            await atlantis.client_log(
+                f"run_turn stream done: turn={turn_count} chunks={streamed_count} "
+                f"tool_calls={len(tool_calls_accumulator)}"
+            )
 
             # Stop when no tools are requested
             if not tool_calls_accumulator:
@@ -214,6 +243,9 @@ async def run_turn(
     finally:
         await _close_streams(stream_talk_id, stream_think_id)
 
+    await atlantis.client_log(
+        f"run_turn done: bot_sid={bot_sid!r} chars={len(accumulated_text or '')}"
+    )
     return accumulated_text or None
 
 # Keep bot_turn as an alias for backward compat
