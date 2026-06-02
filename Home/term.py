@@ -43,7 +43,8 @@ async def term_glass() -> None:
     if (!fb) return;
 
     var styleId = 'frostStyle';
-    if (!document.getElementById(styleId)) {
+    document.querySelectorAll('#' + styleId).forEach(function(existing){ existing.remove(); });
+    {
       var s = document.createElement('style');
       s.id = styleId;
       s.textContent =
@@ -91,6 +92,36 @@ async def term_glass() -> None:
 
         'body.terminal-frosted #botTableStickyHeaderShim .bot-table-header{' +
         ' background-color:rgba(8,12,32,0.82) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        '}' +
+
+        'body.terminal-frosted .monaco-editor{' +
+        ' background-color:rgba(8,10,18,0.16) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        '}' +
+
+        'body.terminal-frosted .monaco-editor .editor-scrollable,' +
+        'body.terminal-frosted .monaco-editor .lines-content.monaco-editor-background,' +
+        'body.terminal-frosted .monaco-editor .view-lines{' +
+        ' background-color:transparent !important;' +
+        '}' +
+
+        'body.terminal-frosted .monaco-editor .lines-content.monaco-editor-background{' +
+        ' background-image:linear-gradient(to top, rgba(24,24,44,0.16), rgba(10,10,18,0.08)) !important;' +
+        '}' +
+
+        'body.terminal-frosted .jsPanel,' +
+        'body.terminal-frosted .jsPanel .jsPanel-content,' +
+        'body.terminal-frosted .jsPanel-content{' +
+        ' background:transparent !important;' +
+        ' background-color:transparent !important;' +
+        '}' +
+
+        'body.terminal-frosted .jsPanel .panel-buttonbar{' +
+        ' background:rgba(12,18,28,0.16) !important;' +
+        ' background-color:rgba(12,18,28,0.16) !important;' +
         ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
         ' backdrop-filter:blur(6px) saturate(112%);' +
         '}';

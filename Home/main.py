@@ -16,27 +16,6 @@ import logging
 
 logger = logging.getLogger("mcp_server")
 
-# % ls
-
-# % camera list
-
-
-
-""" %
-execute_tool {search_term: "bot_list",
-    arguments:{},
-     transcript:[]}
-"""
-
-# % ls prompt*
-
-""" %
-prompt_aassemble {
-    bot_sid: "kitty",
-    speaker_sid: null
-}  
-"""
-
 
 
 @visible

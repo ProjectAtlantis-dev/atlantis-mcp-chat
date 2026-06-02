@@ -10,7 +10,7 @@ from .chat import (
     analyze_participants, fetch_transcript,
 )
 from .common import _read_json
-from .game import _game_roster_scene, require_game_dir
+from .game import _game_roster_scene, require_membership
 from .roster import _load_game_roster
 from .turn import bot_turn
 
@@ -24,7 +24,7 @@ _MAX_BOT_CHAIN = 4
 
 def _require_roster_assigned(game_key: str) -> None:
     """Fail early if chat starts before this game has a created roster."""
-    data_dir = require_game_dir(game_key)
+    data_dir = require_membership(game_key)
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}
     if not _game_roster_scene(meta):
         raise RuntimeError(f"Game {game_key!r} has no roster assigned yet")
