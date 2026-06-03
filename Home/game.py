@@ -281,9 +281,20 @@ async def game_password(game_key: str, new_password: str) -> None:
 
 @button("Join existing game")
 @public
-async def game_join(game_key: str) -> Dict[str, Any]:
+async def game_join() -> Dict[str, Any]:
     from .modal import modal_string
 
+    entered_game_key = await modal_string(
+        "Enter game key:",
+        submit_label="Next",
+        title="Join game",
+        submitting_label="Checking...",
+        empty_error="Enter the game key to continue.",
+        autocomplete="off",
+    )
+    if entered_game_key is None:
+        return {"cancelled": True}
+    game_key = str(entered_game_key or "").strip()
     if not game_key:
         raise ValueError("game_key required")
 
@@ -305,7 +316,7 @@ async def game_join(game_key: str) -> Dict[str, Any]:
         return {"cancelled": True}
 
     if meta.get('join_password') != password:
-        raise ValueError("Incorrect password")
+        raise ValueError(f"Incorrect password for game {game_key}")
 
     return await _game_join_authorized(game_key, data_dir, meta)
 
