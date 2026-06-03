@@ -100,9 +100,31 @@ async def term_glass() -> None:
         ' background-color:rgba(8,10,18,0.16) !important;' +
         ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
         ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' --vscode-focusBorder:rgba(255,255,255,0.22) !important;' +
+        ' --focus-border:rgba(255,255,255,0.22) !important;' +
+        '}' +
+
+        'body.terminal-frosted .monaco-editor *{' +
+        ' --vscode-focusBorder:rgba(255,255,255,0.22) !important;' +
+        ' --focus-border:rgba(255,255,255,0.22) !important;' +
+        '}' +
+
+        'body.terminal-frosted .monaco-editor.focused,' +
+        'body.terminal-frosted .monaco-editor .focused,' +
+        'body.terminal-frosted .monaco-editor :focus,' +
+        'body.terminal-frosted .monaco-editor :focus-visible{' +
+        ' outline-color:rgba(255,255,255,0.22) !important;' +
+        ' box-shadow:none !important;' +
         '}' +
 
         'body.terminal-frosted .monaco-editor .editor-scrollable,' +
+        'body.terminal-frosted .monaco-editor .margin,' +
+        'body.terminal-frosted .monaco-editor .glyph-margin,' +
+        'body.terminal-frosted .monaco-editor .margin-view-overlays,' +
+        'body.terminal-frosted .monaco-editor .margin-view-overlays > div,' +
+        'body.terminal-frosted .monaco-editor .margin-view-overlays .line-numbers,' +
+        'body.terminal-frosted .monaco-editor .margin-view-overlays .current-line,' +
+        'body.terminal-frosted .monaco-editor .margin-view-overlays .cldr,' +
         'body.terminal-frosted .monaco-editor .lines-content.monaco-editor-background,' +
         'body.terminal-frosted .monaco-editor .view-lines{' +
         ' background-color:transparent !important;' +
