@@ -3,6 +3,10 @@
 import atlantis
 from .tool import logger
 
+import logging
+
+logger = logging.getLogger("mcp_server")
+
 
 @visible
 async def index(session_key: str):
@@ -10,11 +14,15 @@ async def index(session_key: str):
     pass
 
 
+# % clear
 
-import atlantis
-import logging
+# % cd ..
 
-logger = logging.getLogger("mcp_server")
+# % ls
+
+# % cd Demo
+
+# % help edit
 
 
 
