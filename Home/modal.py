@@ -155,6 +155,36 @@ async def modal_string(
   var settled = false;
   var observer = null;
   function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function centerDialog(root) {{
+    var host = null;
+    var node = root;
+    for (var i = 0; i < 8 && node && node !== document.body; i++) {{
+      var style = window.getComputedStyle(node);
+      var rect = node.getBoundingClientRect();
+      var fillsViewport = rect.width >= window.innerWidth * 0.9 && rect.height >= window.innerHeight * 0.9;
+      if ((style.position === "fixed" || style.position === "absolute") && !fillsViewport) {{
+        host = node;
+        break;
+      }}
+      node = node.parentElement;
+    }}
+    if (!host) return;
+    var rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    host.style.left = "50%";
+    host.style.top = "50%";
+    host.style.right = "auto";
+    host.style.bottom = "auto";
+    host.style.transform = "translate(-50%, -50%)";
+    host.style.margin = "0";
+  }}
+  function scheduleCenter(root) {{
+    centerDialog(root);
+    requestAnimationFrame(function() {{
+      centerDialog(root);
+      setTimeout(function() {{ centerDialog(root); }}, 180);
+    }});
+  }}
   async function cancel() {{
     if (settled) return;
     settled = true;
@@ -174,8 +204,9 @@ async def modal_string(
     var error = document.getElementById("displayname-err-{uid}");
     if (!root || !form || !button || !input) return;
     function focusInput() {{ input.focus({{ preventScroll: true }}); input.select(); }}
+    scheduleCenter(root);
     focusInput();
-    setTimeout(focusInput, 120);
+    setTimeout(function() {{ scheduleCenter(root); focusInput(); }}, 120);
     form.addEventListener("submit", async function(event) {{
       event.preventDefault();
       if (settled) return;

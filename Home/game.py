@@ -86,6 +86,12 @@ def require_membership(game_key: str) -> str:
         raise PermissionError(f"Session is not a member of game '{game_key}'")
     return path
 
+# % ls   
+
+# % "Hello"
+
+
+
 
 @button("New Game")
 @public

@@ -23,7 +23,8 @@ async def game_overview(game_key: str) -> None:
     loc_rows = _location_rows()
     camera_rows = _camera_rows(game_key)
     scene_rows = _scene_rows()
-    roster_rows = _display_roster_rows(_load_game_roster(game_key))
+    roster_path = os.path.join(data_dir, "roster.json")
+    roster_rows = _display_roster_rows(_load_game_roster(game_key)) if os.path.isfile(roster_path) else []
 
     def _trunc(s, n=40):
         s = str(s or "")

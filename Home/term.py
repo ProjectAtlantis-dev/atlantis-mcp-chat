@@ -18,6 +18,28 @@ async def term_video(url: str) -> None:
     )
 
 
+@public
+async def term_player(
+    url: str,
+    muted: bool = True,
+    autoplay: bool = True,
+    controls: bool = False,
+    loop: bool = False,
+    remove_on_ended: bool = True,
+) -> None:
+    """Show a controllable terminal background video player in the feedback div."""
+    await atlantis.set_background_player(
+        url,
+        vertical_align="center",
+        loop=loop,
+        muted=muted,
+        autoplay=autoplay,
+        plays_inline=True,
+        remove_on_ended=remove_on_ended,
+        controls=controls,
+    )
+
+
 def _local_video_path(video_path: str) -> str:
     """Resolve and validate a local video path."""
     path = str(video_path or "").strip()
@@ -33,6 +55,12 @@ def _local_video_path(video_path: str) -> str:
 async def term_video_file(video_path: str) -> None:
     """Play a local terminal background video file."""
     await term_video(_local_video_path(video_path))
+
+
+@public
+async def term_player_file(video_path: str) -> None:
+    """Show a local terminal background video file as a controllable player."""
+    await term_player(_local_video_path(video_path))
 
 @public
 async def term_glass() -> None:
@@ -84,6 +112,27 @@ async def term_glass() -> None:
 
         '#feedback.frosted .bot-table-cell.bot-table-cell-selected{' +
         ' background-color:rgba(45,74,107,0.40) !important;' +
+        '}' +
+
+        '#feedback.frosted .catCodeBlock{' +
+        ' background-image:linear-gradient(to top, rgba(24,24,44,0.20), rgba(10,10,18,0.12)) !important;' +
+        ' background-color:rgba(7,7,12,0.14) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border:1px solid rgba(255,255,255,0.13) !important;' +
+        ' box-shadow:0 4px 14px rgba(0,0,0,0.24) !important;' +
+        '}' +
+
+        '#feedback.frosted .catCode,' +
+        '#feedback.frosted .catCode span{' +
+        ' background-color:transparent !important;' +
+        '}' +
+
+        '#feedback.frosted .catHiddenAbove,' +
+        '#feedback.frosted .catHiddenBelow{' +
+        ' background-color:rgba(7,7,12,0.08) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
         '}' +
 
         'body.terminal-frosted #botTableStickyHeaderShim{' +
