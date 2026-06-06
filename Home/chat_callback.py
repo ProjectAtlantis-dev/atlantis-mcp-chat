@@ -14,7 +14,7 @@ from .game import _game_roster_scene, require_membership
 from .roster import _load_game_roster
 from .turn import bot_turn
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 _BUSY_KEY = "chat_busy"
 _LAST_CHAT_KEY_PREFIX = "chat_last_seen:"

@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from .common import home_path, _read_json
 from .bot import load_bot
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 
 def _scenes_dir() -> str:

@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any, Dict
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 # ---------------------------------------------------------------------------
 # Paths & JSON I/O

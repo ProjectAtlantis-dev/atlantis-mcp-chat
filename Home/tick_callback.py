@@ -8,7 +8,7 @@ game, not an error.
 import atlantis
 import logging
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 _BUSY_KEY = "chat_busy"
 

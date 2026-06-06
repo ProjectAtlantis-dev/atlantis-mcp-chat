@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Mapping, Optional, TypedDict
 from .common import _ensure_thumb, home_path, _require_str
 from .location import _leaf_location_keys
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 
 class BotConfigT(TypedDict):

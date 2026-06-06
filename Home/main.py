@@ -5,7 +5,7 @@ from .tool import logger
 
 import logging
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 
 @visible

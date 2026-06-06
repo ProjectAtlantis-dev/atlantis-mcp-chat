@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from .common import _ensure_thumb, home_path, _require_str
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 
 class LocationConfigT(TypedDict):

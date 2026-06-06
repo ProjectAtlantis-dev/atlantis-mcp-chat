@@ -1,7 +1,7 @@
 import atlantis
 import logging
 
-logger = logging.getLogger("mcp_server")
+logger = logging.getLogger("dynamic_function")
 
 
 @visible
@@ -45,3 +45,12 @@ async def foo(x: int | float, y: int | float):
     x = _number(x, "x")
     y = _number(y, "y")
     return x + y
+
+
+@dynamic
+async def foobar(path: str = "."):
+    """
+    Dynamic folder provider for Test/foobar.
+    """
+    logger.info(f"Listing dynamic folder foobar path={path!r}")
+    return []
