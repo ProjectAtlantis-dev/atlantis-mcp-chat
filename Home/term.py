@@ -62,6 +62,54 @@ async def term_player_file(video_path: str) -> None:
     """Show a local terminal background video file as a controllable player."""
     await term_player(_local_video_path(video_path))
 
+
+@public
+async def term_player_info() -> None:
+    """Print current terminal background player position and quality info."""
+    await atlantis.client_terminal_script("""
+(function(){
+  if (window._dumpBackgroundPlayerState) {
+    window._dumpBackgroundPlayerState();
+  } else {
+    console.warn("Background player inspector is not available");
+  }
+})();
+""")
+
+
+@public
+async def term_brightness(value: float) -> None:
+    """Set terminal background brightness. 1 is normal, 0.6 is darker, values above 1 lighten."""
+    brightness = float(value)
+    if brightness < 0:
+        raise ValueError("brightness must be non-negative")
+    await atlantis.client_terminal_script(f"""
+(function(){{
+  if (window._renderBackgroundBrightness) {{
+    window._renderBackgroundBrightness({brightness});
+  }} else {{
+    console.warn("Background brightness renderer is not available");
+  }}
+}})();
+""")
+
+
+@public
+async def term_desaturate(value: float) -> None:
+    """Desaturate the terminal background. 0 is normal color, 1 is grayscale."""
+    desaturate = float(value)
+    if desaturate < 0 or desaturate > 1:
+        raise ValueError("desaturate must be between 0 and 1")
+    await atlantis.client_terminal_script(f"""
+(function(){{
+  if (window._renderBackgroundDesaturation) {{
+    window._renderBackgroundDesaturation({desaturate});
+  }} else {{
+    console.warn("Background desaturation renderer is not available");
+  }}
+}})();
+""")
+
 @public
 async def term_glass() -> None:
     """Apply frosted styling to terminal feedback bubbles."""

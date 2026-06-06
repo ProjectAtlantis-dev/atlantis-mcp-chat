@@ -93,7 +93,6 @@ def require_membership(game_key: str) -> str:
 
 
 
-@button("New Game")
 @public
 async def game_button():
     keys = await game_new()
@@ -285,7 +284,6 @@ async def game_password(game_key: str, new_password: str) -> None:
     await atlantis.client_log(f"Password to game {game_key} was changed")
 
 
-@button("Join existing game")
 @public
 async def game_join() -> Dict[str, Any]:
     from .modal import modal_string
