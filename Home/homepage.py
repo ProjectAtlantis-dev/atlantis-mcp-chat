@@ -29,7 +29,7 @@ def _card_button(label: str, command: str) -> str:
     """
 
 
-@visible
+@homepage
 async def homepage(dashboard: Optional[Dict[str, Any]] = None) -> str:
     """Return the dashboard card HTML fragment for this remote."""
 
