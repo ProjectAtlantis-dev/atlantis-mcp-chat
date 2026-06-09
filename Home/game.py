@@ -86,7 +86,63 @@ def require_membership(game_key: str) -> str:
         raise PermissionError(f"Session is not a member of game '{game_key}'")
     return path
 
-# % ls   
+
+def find_latest_owned_game() -> Optional[str]:
+    """Return the newest game owned by the current caller, if one exists."""
+    owner = atlantis.get_caller()
+    if not owner:
+        raise RuntimeError("No caller identity in this call context")
+
+    games_root = home_path("Data", "games")
+    if not os.path.isdir(games_root):
+        return None
+
+    matches = []
+    for game_key in os.listdir(games_root):
+        path = os.path.join(games_root, game_key)
+        if not os.path.isdir(path):
+            continue
+        meta = _read_json(os.path.join(path, "game.json")) or {}
+        if meta.get("owner") != owner:
+            continue
+        matches.append((os.path.getctime(path), game_key))
+
+    if not matches:
+        return None
+    matches.sort(reverse=True)
+    return matches[0][1]
+
+@public
+async def game_find_or_create() -> str:
+    """Return the caller's newest owned game, creating one if needed.
+
+    The current ownership policy is: reuse the caller's newest owned game; if no
+    owned game exists, create one and run the normal game initialization path.
+    """
+    game_key = find_latest_owned_game()
+    if game_key:
+        data_dir = require_game_dir(game_key)
+        meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+        members = meta.setdefault("members", {})
+        session_key = atlantis.get_session_key()
+        if not session_key:
+            raise RuntimeError("No session key in this call context")
+        if session_key not in members:
+            # A new browser/session from the same caller should keep using the
+            # caller's current game, but must be added as a member first.
+            add_caller_membership(members)
+            _write_json(os.path.join(data_dir, "game.json"), meta)
+        return game_key
+
+    # First chat for this caller: create a game, join the cursor to it, and run
+    # game_init so callbacks, roster, binding, and initial spawn are ready.
+    keys = await game_new()
+    game_key = keys["game_key"]
+    await atlantis.client_command("/cursor join", keys)
+    await game_init(game_key)
+    return game_key
+
+# % ls
 
 # % "Hello"
 
@@ -156,8 +212,8 @@ async def game_video_file(video_path: str) -> None:
 
 
 @public
-async def game_background() -> None:
-    """Set the game background image."""
+async def game_default_background() -> None:
+    """Set the game default background image."""
     await atlantis.set_background(
         os.path.join(os.path.dirname(__file__), "builder.jpg"),
         vertical_align="75%",
@@ -187,7 +243,7 @@ async def game_new() -> Dict[str, Any]:
     })
 
     await atlantis.client_log(f"Game created: {game_key}")
-    await game_background()
+    await game_default_background()
 
     return {
         "game_key": game_key,

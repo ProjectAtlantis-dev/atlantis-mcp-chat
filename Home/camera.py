@@ -1,18 +1,18 @@
 """Cameras — where each terminal is looking.
 
 A *camera* is one terminal's viewpoint: it maps a terminal_key (the PK,
-atlantis session_key narrowed to one shell — i.e. sessionKey + shell) to the
-Location that terminal is currently watching.
+atlantis session_key narrowed to one shell — i.e. sessionKey + shell) to what
+that terminal is currently watching.
 
 The mapping is per game and lives in Data/games/<key>/cameras.json. The stored
-file starts empty; bindings appear only as terminals are assigned to locations.
-The *view* (`_camera_rows`), however, is an outer join against standable
-locations — see that function.
+file starts empty; bindings appear only as terminals are assigned to locations
+or roster slots. The *view* (`_camera_rows`) resolves every target to a concrete
+Location and outer joins against standable locations — see that function.
 """
 
 import atlantis
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .common import (
     _read_json,
@@ -28,23 +28,72 @@ from .location import (
 
 
 # ---------------------------------------------------------------------------
-# Camera store — terminal_key -> location, per game
+# Camera store — terminal_key -> camera target, per game
 # ---------------------------------------------------------------------------
 
 def _cameras_path(game_key: str) -> str:
     return os.path.join(require_game_dir(game_key), "cameras.json")
 
 
-def _load_cameras(game_key: str) -> Dict[str, Dict[str, str]]:
+def _load_cameras(game_key: str) -> Dict[str, Dict[str, Any]]:
     return _read_json(_cameras_path(game_key), {}) or {}
 
 
-def _save_cameras(game_key: str, cameras: Dict[str, Dict[str, str]]) -> None:
+def _save_cameras(game_key: str, cameras: Dict[str, Dict[str, Any]]) -> None:
     _write_json(_cameras_path(game_key), cameras)
 
 
+def _location_default_camera_align(location: str) -> str:
+    loc = _load_location(location)
+    if not loc:
+        raise ValueError(f"Unknown location: {location}")
+    align = str(loc.get("defaultCameraAlign", "") or "").strip()
+    if not align:
+        raise ValueError(f"Location {location!r} has no defaultCameraAlign set")
+    return align
+
+
+def _camera_target_label(entry: Dict[str, Any]) -> str:
+    target_type = str(entry.get("target_type", "") or "").strip()
+    if target_type == "location":
+        return str(entry.get("location", "") or "").strip()
+    if target_type == "slot":
+        return f"slot:{str(entry.get('slot_key', '') or '').strip()}"
+    return ""
+
+
+def _slot_location(game_key: str, slot_key: str) -> Optional[str]:
+    from .roster import _load_game_roster
+
+    slot_key = str(slot_key or "").strip()
+    if not slot_key:
+        raise ValueError("slot_key required")
+
+    for row in _load_game_roster(game_key):
+        if str(row.get("key", "") or "").strip() == slot_key:
+            location = str(row.get("location", "") or "").strip()
+            return location or None
+    raise ValueError(f"Unknown roster slot: {slot_key!r}")
+
+
+def _resolve_camera_location(game_key: str, entry: Dict[str, Any]) -> Optional[str]:
+    target_type = str(entry.get("target_type", "") or "").strip()
+    if target_type == "location":
+        location = str(entry.get("location", "") or "").strip()
+        return location or None
+    if target_type == "slot":
+        return _slot_location(game_key, str(entry.get("slot_key", "") or ""))
+    raise ValueError(f"Unknown camera target_type: {target_type!r}")
+
+
+async def _paint_location(location: str) -> None:
+    background = location_image_path(location)
+    align = _location_default_camera_align(location)
+    await atlantis.set_background(background, vertical_align=align)
+
+
 def _camera_rows(game_key: str) -> List[Dict[str, str]]:
-    """Pure data: outer join of standable locations against bound terminals.
+    """Pure data: outer join of standable locations against resolved cameras.
 
     One row per leaf location.
     Every terminal watching it — a single user's many shells, or many users — is
@@ -53,10 +102,21 @@ def _camera_rows(game_key: str) -> List[Dict[str, str]]:
     """
     cameras = _load_cameras(game_key)
     by_location: Dict[str, List[str]] = {}
+    targets_by_location: Dict[str, List[str]] = {}
     for terminal_key, entry in cameras.items():
-        by_location.setdefault(entry["location"], []).append(terminal_key)
+        location = _resolve_camera_location(game_key, entry)
+        if not location:
+            continue
+        by_location.setdefault(location, []).append(terminal_key)
+        targets_by_location.setdefault(location, []).append(
+            f"{terminal_key} -> {_camera_target_label(entry)}"
+        )
     return [
-        {"location": location, "terminal": "\n".join(sorted(by_location.get(location, [])))}
+        {
+            "location": location,
+            "terminal": "\n".join(sorted(by_location.get(location, []))),
+            "target": "\n".join(sorted(targets_by_location.get(location, []))),
+        }
         for location in _leaf_location_keys()
     ]
 
@@ -66,6 +126,7 @@ async def _render_cameras(game_key: str) -> List[Dict[str, str]]:
     rows = _camera_rows(game_key)
     await atlantis.client_data("Cameras", rows, column_formatter={
         "terminal": {"type": "pre"},
+        "target": {"type": "pre"},
     })
     return rows
 
@@ -78,7 +139,7 @@ async def camera_list(game_key: str) -> List[Dict[str, str]]:
 
 
 @visible
-async def camera_bind(game_key: str, location: str, align: str = "") -> Dict[str, str]:
+async def camera_bind(game_key: str, location: str) -> Dict[str, str]:
     """Bind the calling terminal to a Location, establishing its camera.
 
     The terminal_key (sessionKey + shell) of the calling shell starts watching
@@ -89,8 +150,7 @@ async def camera_bind(game_key: str, location: str, align: str = "") -> Dict[str
     and have an image; containers, unknown names, and imageless leaves are
     rejected before anything is mutated.
 
-    `align` is forwarded to set_background's vertical_align; if empty, the
-    location's `defaultCameraAlign` is used (which is required to be set).
+    The location's `defaultCameraAlign` is used when painting the terminal.
     """
     require_membership(game_key)
     terminal_key = atlantis.get_terminal_key()
@@ -100,16 +160,65 @@ async def camera_bind(game_key: str, location: str, align: str = "") -> Dict[str
     if not loc:
         raise ValueError(f"Unknown location: {location}")
     _require_leaf(location)
-    background = location_image_path(location)  # resolve + validate before mutating
-    if not align:
-        align = loc.get("defaultCameraAlign", "")
-        if not align:
-            raise ValueError(f"Location {location!r} has no defaultCameraAlign set")
+    location_image_path(location)  # resolve + validate before mutating
+    _location_default_camera_align(location)
 
     cameras = _load_cameras(game_key)
-    cameras[terminal_key] = {"location": location, "align": align}
+    cameras[terminal_key] = {"target_type": "location", "location": location}
     _save_cameras(game_key, cameras)
 
-    await atlantis.set_background(background, vertical_align=align)
+    await _paint_location(location)
     await _render_cameras(game_key)
-    return {"terminal": terminal_key, "location": location, "align": align}
+    return {"terminal": terminal_key, "target_type": "location", "location": location}
+
+
+@visible
+async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
+    """Bind the calling terminal to follow a roster slot's current Location."""
+    require_membership(game_key)
+    terminal_key = atlantis.get_terminal_key()
+    if not terminal_key:
+        raise RuntimeError("No terminal key in this call context")
+
+    location = _slot_location(game_key, slot_key)
+    if not location:
+        raise RuntimeError(f"Roster slot {slot_key!r} has no current location yet")
+    _require_leaf(location)
+    location_image_path(location)
+    _location_default_camera_align(location)
+
+    cameras = _load_cameras(game_key)
+    cameras[terminal_key] = {"target_type": "slot", "slot_key": str(slot_key).strip()}
+    _save_cameras(game_key, cameras)
+
+    await _paint_location(location)
+    await _render_cameras(game_key)
+    return {
+        "terminal": terminal_key,
+        "target_type": "slot",
+        "slot_key": str(slot_key).strip(),
+        "location": location,
+    }
+
+
+async def camera_slot_moved(game_key: str, slot_key: str, location: Optional[str]) -> List[str]:
+    """Refresh camera table after a followed slot moves.
+
+    Atlantis background painting is scoped to the calling terminal, so this
+    records the resolved state and refreshes the camera view. A terminal that is
+    following the moved slot will repaint on its next camera_follow/camera_bind
+    call unless Atlantis exposes a target-terminal paint primitive.
+    """
+    moved: List[str] = []
+    for terminal_key, entry in _load_cameras(game_key).items():
+        if str(entry.get("target_type", "") or "") != "slot":
+            continue
+        if str(entry.get("slot_key", "") or "").strip() == str(slot_key or "").strip():
+            moved.append(terminal_key)
+
+    if location and atlantis.get_terminal_key() in moved:
+        await _paint_location(location)
+
+    if moved:
+        await _render_cameras(game_key)
+    return sorted(moved)

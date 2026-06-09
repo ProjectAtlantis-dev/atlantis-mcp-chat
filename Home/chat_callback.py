@@ -10,7 +10,7 @@ from .chat import (
     analyze_participants, fetch_transcript,
 )
 from .common import _read_json
-from .game import _game_roster_scene, require_membership
+from .game import _game_roster_scene, game_find_or_create, require_membership
 from .roster import _load_game_roster
 from .turn import bot_turn
 
@@ -34,12 +34,11 @@ def _require_roster_assigned(game_key: str) -> None:
 
 @public
 @chat
-async def chat_callback(game_key: str):
-    """Game tick: fired on every transcript change. The speaker is read from the transcript itself."""
+async def chat_callback():
+    """Game tick: attach this chat session to a game, then respond to transcript changes."""
     if not atlantis.get_session_key():
         logger.warning("chat_callback fired without session context, skipping")
         return
-    _require_roster_assigned(game_key)
 
     request_id = atlantis.get_request_id() or "unknown"
     if atlantis.session_shared.get(_BUSY_KEY):
@@ -48,6 +47,8 @@ async def chat_callback(game_key: str):
 
     atlantis.session_shared.set(_BUSY_KEY, request_id)
     try:
+        game_key = await game_find_or_create()
+        _require_roster_assigned(game_key)
         await _handle_chat(game_key)
     finally:
         atlantis.session_shared.remove(_BUSY_KEY)
@@ -76,7 +77,7 @@ async def _handle_chat(game_key: str):
 
     location = str(speaker.get("location", "") or "").strip()
     if not location:
-        raise RuntimeError(f"Chat speaker {speaker_sid!r} has not spawned into a location yet")
+        raise RuntimeError(f"Chat speaker {speaker_sid!r} has no current location yet")
 
     occupants = _location_occupants(roster, location)
     if not occupants:

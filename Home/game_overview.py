@@ -79,8 +79,8 @@ async def game_overview(game_key: str) -> None:
     tables.append(_table("ent-location", "LOCATION", ["name", "displayName", "parent", "connects_to", "description"],
         [[l["name"], l["displayName"], l.get("parent", ""), l["connects_to"], _trunc(l.get("description", ""))] for l in loc_rows],
         row_classes=["" if l["is_leaf"] else f"er-nonleaf-{uid}" for l in loc_rows]))
-    tables.append(_table("ent-camera", "CAMERA", ["location", "terminal"],
-        [[c["location"], c["terminal"]] for c in camera_rows], dynamic=True))
+    tables.append(_table("ent-camera", "CAMERA", ["location", "terminal", "target"],
+        [[c["location"], c["terminal"], c.get("target", "")] for c in camera_rows], dynamic=True))
 
     relationships = [
         (f"ent-game-{uid}", f"ent-roster-{uid}", "has roster"),

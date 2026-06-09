@@ -4,7 +4,7 @@ import atlantis
 import os
 import shlex
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .bot import load_bot
 from .common import _read_json, _write_json
@@ -222,30 +222,69 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     return target
 
 
-@public
-async def roster_spawn(game_key: str, sid: str, location: str) -> Dict[str, Any]:
-    """Place a roster entry in a Location.
+def _movement_log_label(reason: str) -> str:
+    reason = str(reason or "move").strip() or "move"
+    labels = {
+        "spawn": "spawn",
+        "walk": "walk",
+        "teleport": "teleport",
+        "move": "move",
+    }
+    return labels.get(reason, reason or "move")
 
-    `sid` may be a roster slot key, a bound human sid, or an AI bot sid. If a
-    bot sid appears more than once in the roster, use the slot key.
+
+async def _notify_roster_slot_moved(game_key: str, target: Dict[str, Any], location: Optional[str]) -> None:
+    from .camera import camera_slot_moved
+
+    await camera_slot_moved(game_key, str(target.get("key", "") or ""), location)
+
+
+@public
+async def roster_move(game_key: str, sid_or_slot: str, location: str, reason: str = "move") -> Dict[str, Any]:
+    """Move a roster slot to a Location.
+
+    `sid_or_slot` may be a roster slot key, a bound human sid, or an AI bot sid.
+    If a bot sid appears more than once in the roster, use the slot key.
     """
     load_location(location)
     _require_leaf(location)
 
     rows = _load_game_roster(game_key)
-    target = _find_roster_row(rows, sid)
+    target = _find_roster_row(rows, sid_or_slot)
     previous = str(target.get("location", "") or "")
+    movement_reason = str(reason or "move").strip() or "move"
     target["location"] = location
-    target["spawned_at"] = datetime.now().isoformat(timespec="seconds")
+    if not target.get("spawned_at") or movement_reason == "spawn":
+        target["spawned_at"] = datetime.now().isoformat(timespec="seconds")
 
     _write_game_roster(game_key, rows)
+    log_label = _movement_log_label(movement_reason)
     await atlantis.client_log(
-        f"spawn: {target.get('displayName', sid)} -> {location}"
+        f"{log_label}: {target.get('displayName', sid_or_slot)} -> {location}"
         + (f" from {previous}" if previous and previous != location else "")
     )
     await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
     await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    await _notify_roster_slot_moved(game_key, target, location)
     return target
+
+
+@public
+async def roster_spawn(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
+    """Spawn a roster slot by moving it to a Location."""
+    return await roster_move(game_key, sid_or_slot, location, reason="spawn")
+
+
+@public
+async def roster_walk(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
+    """Walk a roster slot to a Location."""
+    return await roster_move(game_key, sid_or_slot, location, reason="walk")
+
+
+@public
+async def roster_teleport(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
+    """Teleport a roster slot to a Location."""
+    return await roster_move(game_key, sid_or_slot, location, reason="teleport")
 
 
 @public
@@ -264,6 +303,7 @@ async def roster_despawn(game_key: str, sid: str) -> Dict[str, Any]:
     )
     await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
     await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    await _notify_roster_slot_moved(game_key, target, None)
     return target
 
 
