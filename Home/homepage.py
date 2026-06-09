@@ -7,16 +7,15 @@ import atlantis
 async def homepage() -> dict:
     """Return an empty homepage and startup commands."""
 
-    app_path = atlantis.get_script_folder()
-    app_commands = [
-        f"/cd {app_path}",
-        f"/path unshift {app_path}",
-    ] if app_path else []
+    script_folder = atlantis.get_script_folder()
+    if not script_folder:
+        raise RuntimeError("Cannot determine homepage script folder")
 
     return {
         "html": "<div></div>",
         "commands": [
-            *app_commands,
+            f"/cd {script_folder}",
+            f"/path unshift {script_folder}",
             "/terminal on",
             "/app on",
             "/callback set chat auto"
