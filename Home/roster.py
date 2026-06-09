@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from .bot import load_bot
 from .common import _read_json, _write_json
 from .game import require_membership
-from .location import _require_leaf, load_location
+from .location import _connects_to, _require_leaf, load_location
 from .scene import _load_scene, _scene_name
 
 
@@ -226,7 +226,6 @@ def _movement_log_label(reason: str) -> str:
     reason = str(reason or "move").strip() or "move"
     labels = {
         "spawn": "spawn",
-        "walk": "walk",
         "teleport": "teleport",
         "move": "move",
     }
@@ -239,8 +238,23 @@ async def _notify_roster_slot_moved(game_key: str, target: Dict[str, Any], locat
     await camera_slot_moved(game_key, str(target.get("key", "") or ""), location)
 
 
-@public
-async def roster_move(game_key: str, sid_or_slot: str, location: str, reason: str = "move") -> Dict[str, Any]:
+def _require_adjacent_move(previous: str, location: str) -> None:
+    if not previous:
+        raise RuntimeError("Roster slot has no current location; use roster_spawn or roster_teleport first")
+    if previous == location:
+        return
+
+    from_previous = {str(name or "").strip() for name in _connects_to(previous)}
+    from_location = {str(name or "").strip() for name in _connects_to(location)}
+    if location in from_previous or previous in from_location:
+        return
+
+    allowed = sorted(name for name in (from_previous | from_location) if name)
+    suffix = f" Adjacent locations: {', '.join(allowed)}." if allowed else ""
+    raise ValueError(f"Cannot move from {previous!r} to non-adjacent location {location!r}.{suffix}")
+
+
+async def _roster_move(game_key: str, sid_or_slot: str, location: str, reason: str = "move") -> Dict[str, Any]:
     """Move a roster slot to a Location.
 
     `sid_or_slot` may be a roster slot key, a bound human sid, or an AI bot sid.
@@ -253,6 +267,8 @@ async def roster_move(game_key: str, sid_or_slot: str, location: str, reason: st
     target = _find_roster_row(rows, sid_or_slot)
     previous = str(target.get("location", "") or "")
     movement_reason = str(reason or "move").strip() or "move"
+    if movement_reason == "move":
+        _require_adjacent_move(previous, location)
     target["location"] = location
     if not target.get("spawned_at") or movement_reason == "spawn":
         target["spawned_at"] = datetime.now().isoformat(timespec="seconds")
@@ -270,21 +286,21 @@ async def roster_move(game_key: str, sid_or_slot: str, location: str, reason: st
 
 
 @public
-async def roster_spawn(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
-    """Spawn a roster slot by moving it to a Location."""
-    return await roster_move(game_key, sid_or_slot, location, reason="spawn")
+async def roster_move(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
+    """Move a roster slot to an adjacent Location."""
+    return await _roster_move(game_key, sid_or_slot, location, reason="move")
 
 
 @public
-async def roster_walk(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
-    """Walk a roster slot to a Location."""
-    return await roster_move(game_key, sid_or_slot, location, reason="walk")
+async def roster_spawn(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
+    """Spawn a roster slot by moving it to a Location."""
+    return await _roster_move(game_key, sid_or_slot, location, reason="spawn")
 
 
 @public
 async def roster_teleport(game_key: str, sid_or_slot: str, location: str) -> Dict[str, Any]:
     """Teleport a roster slot to a Location."""
-    return await roster_move(game_key, sid_or_slot, location, reason="teleport")
+    return await _roster_move(game_key, sid_or_slot, location, reason="teleport")
 
 
 @public

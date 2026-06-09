@@ -53,15 +53,6 @@ def _location_default_camera_align(location: str) -> str:
     return align
 
 
-def _camera_target_label(entry: Dict[str, Any]) -> str:
-    target_type = str(entry.get("target_type", "") or "").strip()
-    if target_type == "location":
-        return str(entry.get("location", "") or "").strip()
-    if target_type == "slot":
-        return f"slot:{str(entry.get('slot_key', '') or '').strip()}"
-    return ""
-
-
 def _slot_location(game_key: str, slot_key: str) -> Optional[str]:
     from .roster import _load_game_roster
 
@@ -93,41 +84,33 @@ async def _paint_location(location: str) -> None:
 
 
 def _camera_rows(game_key: str) -> List[Dict[str, str]]:
-    """Pure data: outer join of standable locations against resolved cameras.
-
-    One row per leaf location.
-    Every terminal watching it — a single user's many shells, or many users — is
-    stacked newline-separated in the `terminal` cell; a location nobody is
-    watching gets an empty `terminal`. No client side effects.
-    """
+    """Pure data: outer join of standable locations against resolved cameras."""
     cameras = _load_cameras(game_key)
-    by_location: Dict[str, List[str]] = {}
-    targets_by_location: Dict[str, List[str]] = {}
+    rows: List[Dict[str, str]] = []
+    seen_locations: set[str] = set()
     for terminal_key, entry in cameras.items():
         location = _resolve_camera_location(game_key, entry)
         if not location:
             continue
-        by_location.setdefault(location, []).append(terminal_key)
-        targets_by_location.setdefault(location, []).append(
-            f"{terminal_key} -> {_camera_target_label(entry)}"
-        )
-    return [
-        {
+        seen_locations.add(location)
+        target_type = str(entry.get("target_type", "") or "").strip()
+        rows.append({
+            "terminal": terminal_key,
             "location": location,
-            "terminal": "\n".join(sorted(by_location.get(location, []))),
-            "target": "\n".join(sorted(targets_by_location.get(location, []))),
-        }
-        for location in _leaf_location_keys()
-    ]
+            "roster_slot": str(entry.get("slot_key", "") or "").strip() if target_type == "slot" else "",
+        })
+
+    for location in _leaf_location_keys():
+        if location not in seen_locations:
+            rows.append({"terminal": "", "location": location, "roster_slot": ""})
+
+    return sorted(rows, key=lambda row: (row["location"], row["terminal"], row["roster_slot"]))
 
 
 async def _render_cameras(game_key: str) -> List[Dict[str, str]]:
     """Push the camera table to the client and return the rows."""
     rows = _camera_rows(game_key)
-    await atlantis.client_data("Cameras", rows, column_formatter={
-        "terminal": {"type": "pre"},
-        "target": {"type": "pre"},
-    })
+    await atlantis.client_data("Cameras", rows)
     return rows
 
 
