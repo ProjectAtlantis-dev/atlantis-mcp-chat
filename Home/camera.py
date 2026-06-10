@@ -167,19 +167,24 @@ async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
     if not location:
         raise RuntimeError(f"Roster slot {slot_key!r} has no current location yet")
     _require_leaf(location)
-    location_image_path(location)
+    location_image_path(location)  # resolve + validate before mutating
     _location_default_camera_align(location)
 
     cameras = _load_cameras(game_key)
-    cameras[terminal_key] = {"target_type": "slot", "slot_key": str(slot_key).strip()}
+    slot_key = str(slot_key).strip()
+    cameras[terminal_key] = {"target_type": "slot", "slot_key": slot_key}
     _save_cameras(game_key, cameras)
 
+    await atlantis.client_log(
+        f"camera_follow terminal={terminal_key!r} slot={slot_key!r} location={location!r}"
+    )
     await _paint_location(location)
+    await atlantis.client_log(f"camera painted terminal={terminal_key!r} location={location!r}")
     await _render_cameras(game_key)
     return {
         "terminal": terminal_key,
         "target_type": "slot",
-        "slot_key": str(slot_key).strip(),
+        "slot_key": slot_key,
         "location": location,
     }
 

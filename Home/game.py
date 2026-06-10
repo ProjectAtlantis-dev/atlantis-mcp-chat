@@ -86,8 +86,8 @@ def require_membership(game_key: str) -> str:
         raise PermissionError(f"Session is not a member of game '{game_key}'")
     return path
 
-
-def find_latest_owned_game() -> Optional[str]:
+@public
+def game_find_latest_owned() -> Optional[str]:
     """Return the newest game owned by the current caller, if one exists."""
     owner = atlantis.get_caller()
     if not owner:
@@ -119,7 +119,7 @@ async def game_find_or_create() -> str:
     The current ownership policy is: reuse the caller's newest owned game; if no
     owned game exists, create one and run the normal game initialization path.
     """
-    game_key = find_latest_owned_game()
+    game_key = game_find_latest_owned()
     if game_key:
         data_dir = require_game_dir(game_key)
         meta = _read_json(os.path.join(data_dir, "game.json")) or {}
@@ -132,6 +132,9 @@ async def game_find_or_create() -> str:
             # caller's current game, but must be added as a member first.
             add_caller_membership(members)
             _write_json(os.path.join(data_dir, "game.json"), meta)
+        await atlantis.client_log(f"Existing game found: {game_key}")
+        await atlantis.client_command("/cursor join", {"game_key": game_key})
+        await game_init(game_key)
         return game_key
 
     # First chat for this caller: create a game, join the cursor to it, and run
@@ -188,13 +191,26 @@ async def game_init(game_key: str):
         roster = await atlantis.client_command(f"@roster_create {scene}")
         await atlantis.client_log(f"game scene: {scene!r}")
 
+    caller_sid = atlantis.get_caller()
     bound_row = next((row for row in roster if row.get("session_key") == session_key), None)
+    if bound_row is None and caller_sid:
+        bound_row = next(
+            (
+                row for row in roster
+                if row.get("ai") is False and row.get("sid") == caller_sid
+            ),
+            None,
+        )
     open_slots = [row for row in roster if not str(row.get("session_key", "") or "").strip()]
     if bound_row is None and open_slots:
         bound_row = await atlantis.client_command(f"@roster_bind {open_slots[0]['key']}")
-    if bound_row and not bound_row.get("cancelled"):
+    if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
         location = bot_entry_location(str(bound_row.get("bot_sid", "") or ""))
         await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
+    if bound_row and not bound_row.get("cancelled"):
+        from .camera import camera_follow
+
+        await camera_follow(game_key, str(bound_row["key"]))
 
 
 @public

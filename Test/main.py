@@ -45,3 +45,13 @@ async def foo(x: int | float, y: int | float):
     x = _number(x, "x")
     y = _number(y, "y")
     return x + y
+
+@visible
+async def bar(items: list):
+    """
+    Return the provided array unchanged.
+    """
+    logger.info(f"Executing placeholder function: bar...")
+    await atlantis.client_log(f"bar received {len(items)} items")
+
+    return items
