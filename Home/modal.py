@@ -5,7 +5,38 @@ import asyncio
 import html as html_lib
 import json
 import uuid
-from typing import Optional
+from typing import Any, Dict, List, Optional
+
+
+def _modal_shell_css(
+    selector: str,
+    *,
+    padding: int,
+    heading_margin: str,
+    heading_font_size: int,
+    heading_line_height: float,
+) -> str:
+    return f"""
+  {selector} {{
+    box-sizing: border-box;
+    width: 100%;
+    min-width: min(100%, 320px);
+    padding: {padding}px;
+    color: #f7f4ea;
+    background:
+      linear-gradient(to bottom, rgba(20, 34, 48, 0.96), rgba(20, 50, 60, 0.96)),
+      radial-gradient(circle at 18% 20%, rgba(20, 255, 208, 0.22), transparent 34%);
+    border: 1px solid rgba(20, 255, 208, 0.42);
+    border-radius: 8px;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }}
+  {selector} h2 {{
+    margin: {heading_margin};
+    font-size: {heading_font_size}px;
+    line-height: {heading_line_height};
+    color: #fffaf0;
+  }}
+"""
 
 
 @public
@@ -39,25 +70,7 @@ async def modal_string(
     atlantis.session_shared.set(f"{modal_string_id}:future", future)
     html = f"""
 <style>
-  #displayname-{uid} {{
-    box-sizing: border-box;
-    width: 100%;
-    min-width: min(100%, 320px);
-    padding: 28px;
-    color: #f7f4ea;
-    background:
-      linear-gradient(to bottom, rgba(20, 34, 48, 0.96), rgba(20, 50, 60, 0.96)),
-      radial-gradient(circle at 18% 20%, rgba(20, 255, 208, 0.22), transparent 34%);
-    border: 1px solid rgba(20, 255, 208, 0.42);
-    border-radius: 8px;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  }}
-  #displayname-{uid} h2 {{
-    margin: 10px 0 28px;
-    font-size: 30px;
-    line-height: 1.1;
-    color: #fffaf0;
-  }}
+{_modal_shell_css(f"#displayname-{uid}", padding=28, heading_margin="10px 0 28px", heading_font_size=30, heading_line_height=1.1)}
   #displayname-{uid} form {{
     display: grid;
     gap: 12px;
@@ -241,6 +254,191 @@ async def modal_string(
 
 @public
 @visible
+async def modal_menu(
+    choices: List[Dict[str, Any]],
+    title: str = "",
+    heading: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Pop up a modal menu and return the selected choice object.
+
+    Returns None if the user closes/cancels the modal without selecting.
+    """
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("choices must be a non-empty array")
+
+    choice_by_id: Dict[str, Dict[str, Any]] = {}
+    choice_buttons = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            raise ValueError("each choice must be an object")
+        choice_id = str(choice.get("id", "")).strip()
+        choice_text = str(choice.get("text", "")).strip()
+        if not choice_id:
+            raise ValueError("each choice requires a non-empty id")
+        if not choice_text:
+            raise ValueError("each choice requires a non-empty text")
+        if choice_id in choice_by_id:
+            raise ValueError(f"duplicate choice id: {choice_id!r}")
+        choice_by_id[choice_id] = choice
+        choice_buttons.append(
+            '<button type="button" class="menu-choice" role="menuitem" '
+            f'data-choice-id="{html_lib.escape(choice_id, quote=True)}">'
+            f"{html_lib.escape(choice_text)}</button>"
+        )
+
+    uid = uuid.uuid4().hex[:8]
+    modal_menu_id = f"modal_menu:{uid}"
+    modal_menu_id_js = json.dumps(modal_menu_id)
+    heading_block = f"<h2>{html_lib.escape(heading)}</h2>" if heading else ""
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    atlantis.session_shared.set(f"{modal_menu_id}:future", future)
+    atlantis.session_shared.set(f"{modal_menu_id}:choices", choice_by_id)
+    html = f"""
+<style>
+{_modal_shell_css(f"#modalmenu-{uid}", padding=22, heading_margin="4px 0 16px", heading_font_size=24, heading_line_height=1.15)}
+  #modalmenu-{uid} .menu-list {{
+    display: grid;
+    gap: 8px;
+    width: 100%;
+  }}
+  #modalmenu-{uid} .menu-choice {{
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 42px;
+    padding: 0 14px;
+    color: #fffaf0;
+    background: rgba(7, 15, 22, 0.58);
+    border: 1px solid rgba(20, 255, 208, 0.34);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }}
+  #modalmenu-{uid} .menu-choice:hover,
+  #modalmenu-{uid} .menu-choice:focus {{
+    background: rgba(20, 255, 208, 0.14);
+    border-color: rgba(20, 255, 208, 0.62);
+    outline: none;
+  }}
+  #modalmenu-{uid} .menu-choice:disabled {{
+    cursor: default;
+    opacity: 0.65;
+  }}
+</style>
+<section id="modalmenu-{uid}" aria-label="Menu">
+  {heading_block}
+  <div class="menu-list" role="menu">
+    {"".join(choice_buttons)}
+  </div>
+</section>
+"""
+    modal_id = await atlantis.client_modal(html, title=title or " ")
+    atlantis.session_shared.set(f"{modal_menu_id}:modal_id", modal_id)
+    exec_shell_js = json.dumps(atlantis.get_exec_shell_path())
+
+    script = f"""
+(function() {{
+  var settled = false;
+  var observer = null;
+  function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function centerDialog(root) {{
+    var host = null;
+    var node = root;
+    for (var i = 0; i < 8 && node && node !== document.body; i++) {{
+      var style = window.getComputedStyle(node);
+      var rect = node.getBoundingClientRect();
+      var fillsViewport = rect.width >= window.innerWidth * 0.9 && rect.height >= window.innerHeight * 0.9;
+      if ((style.position === "fixed" || style.position === "absolute") && !fillsViewport) {{
+        host = node;
+        break;
+      }}
+      node = node.parentElement;
+    }}
+    if (!host) return;
+    var rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    host.style.left = "50%";
+    host.style.top = "50%";
+    host.style.right = "auto";
+    host.style.bottom = "auto";
+    host.style.transform = "translate(-50%, -50%)";
+    host.style.margin = "0";
+  }}
+  function scheduleCenter(root) {{
+    centerDialog(root);
+    requestAnimationFrame(function() {{
+      centerDialog(root);
+      setTimeout(function() {{ centerDialog(root); }}, 180);
+    }});
+  }}
+  async function cancel() {{
+    if (settled) return;
+    settled = true;
+    cleanup();
+    if (!window._accessToken) return;
+    try {{
+      await sendChatter(window._accessToken, "@modal_menu_cancel", {{
+        modal_menu_id: {modal_menu_id_js}
+      }}, {exec_shell_js});
+    }} catch (e) {{}}
+  }}
+  function bind() {{
+    var root = document.getElementById("modalmenu-{uid}");
+    if (!root) return;
+    var buttons = Array.prototype.slice.call(root.querySelectorAll(".menu-choice"));
+    if (!buttons.length) return;
+    scheduleCenter(root);
+    buttons[0].focus({{ preventScroll: true }});
+    setTimeout(function() {{ scheduleCenter(root); }}, 120);
+    buttons.forEach(function(button) {{
+      button.addEventListener("click", async function() {{
+        if (settled) return;
+        if (!window._accessToken) return;
+        var choiceId = button.getAttribute("data-choice-id") || "";
+        buttons.forEach(function(btn) {{ btn.disabled = true; }});
+        settled = true;
+        cleanup();
+        await sendChatter(window._accessToken, "@modal_menu_select", {{
+          modal_menu_id: {modal_menu_id_js},
+          choice_id: choiceId
+        }}, {exec_shell_js});
+      }});
+      button.addEventListener("keydown", function(event) {{
+        var index = buttons.indexOf(button);
+        if (event.key === "ArrowDown") {{
+          event.preventDefault();
+          buttons[(index + 1) % buttons.length].focus({{ preventScroll: true }});
+        }} else if (event.key === "ArrowUp") {{
+          event.preventDefault();
+          buttons[(index + buttons.length - 1) % buttons.length].focus({{ preventScroll: true }});
+        }} else if (event.key === "Enter" || event.key === " ") {{
+          event.preventDefault();
+          button.click();
+        }}
+      }});
+    }});
+    observer = new MutationObserver(function() {{
+      if (!document.body.contains(root)) {{ cancel(); }}
+    }});
+    observer.observe(document.body, {{ childList: true, subtree: true }});
+  }}
+  requestAnimationFrame(function() {{ requestAnimationFrame(bind); }});
+}})()
+"""
+    await atlantis.client_script(script)
+    try:
+        return await future
+    finally:
+        atlantis.session_shared.remove(f"{modal_menu_id}:future")
+        atlantis.session_shared.remove(f"{modal_menu_id}:modal_id")
+        atlantis.session_shared.remove(f"{modal_menu_id}:choices")
+
+
+@public
+@visible
 async def modal_string_click(modal_string_id: str, display_name: str) -> None:
     """Handle the display-name modal submit."""
     display_name = (display_name or "").strip()
@@ -265,6 +463,49 @@ async def modal_string_cancel(modal_string_id: str) -> None:
     """Handle the user closing the modal without submitting."""
     modal_key = f"{modal_string_id}:modal_id"
     future_key = f"{modal_string_id}:future"
+    modal_id = atlantis.session_shared.get(modal_key)
+    if modal_id:
+        try:
+            await atlantis.client_modal_close(modal_id)
+        except Exception:
+            pass
+        atlantis.session_shared.remove(modal_key)
+    future = atlantis.session_shared.get(future_key)
+    if future is not None and not future.done():
+        future.set_result(None)
+
+
+@public
+@visible
+async def modal_menu_select(modal_menu_id: str, choice_id: str) -> None:
+    """Handle a modal menu selection."""
+    choice_id = (choice_id or "").strip()
+    if not choice_id:
+        raise ValueError("choice_id is required")
+    modal_key = f"{modal_menu_id}:modal_id"
+    future_key = f"{modal_menu_id}:future"
+    choices_key = f"{modal_menu_id}:choices"
+    modal_id = atlantis.session_shared.get(modal_key)
+    if modal_id:
+        await atlantis.client_modal_close(modal_id)
+        atlantis.session_shared.remove(modal_key)
+    choices = atlantis.session_shared.get(choices_key) or {}
+    choice = choices.get(choice_id)
+    if choice is None:
+        raise ValueError(f"Unknown menu choice: {choice_id!r}")
+    future = atlantis.session_shared.get(future_key)
+    if future is None:
+        raise ValueError("Menu modal is no longer active")
+    if not future.done():
+        future.set_result(choice)
+
+
+@public
+@visible
+async def modal_menu_cancel(modal_menu_id: str) -> None:
+    """Handle the user closing a modal menu without selecting."""
+    modal_key = f"{modal_menu_id}:modal_id"
+    future_key = f"{modal_menu_id}:future"
     modal_id = atlantis.session_shared.get(modal_key)
     if modal_id:
         try:
