@@ -2,11 +2,12 @@
 
 import atlantis
 
-@public
+
 @homepage
 async def homepage() -> dict:
     """Return startup commands."""
 
+    # this folder
     script_folder = atlantis.get_script_folder()
     if not script_folder:
         raise RuntimeError("Cannot determine homepage script folder")
@@ -17,7 +18,6 @@ async def homepage() -> dict:
             f"/path unshift {script_folder}",
             "/terminal on",
             "app on",
-            "callback set chat auto",
             "game find or create"
         ],
     }

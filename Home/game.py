@@ -161,56 +161,6 @@ async def game_button():
     return keys
 
 
-@public
-async def game_init(game_key: str):
-    data_dir = require_membership(game_key)
-    session_key = atlantis.get_session_key()
-    roster_path = os.path.join(data_dir, "roster.json")
-
-    callbacks = await atlantis.client_command("/callback list")
-    chat_row = next(row for row in callbacks if row["mode"] == "chat")
-
-    if not chat_row["toolPath"]:
-        matches = await atlantis.client_command("/tool find chat")
-        chat_tool = matches[0]
-        await atlantis.client_command(f"/callback set chat {chat_tool['searchTerm']}")
-
-        callbacks = await atlantis.client_command("/callback list")
-        chat_row = next(row for row in callbacks if row["mode"] == "chat")
-
-    await atlantis.client_log(f"chat callback: toolPath={chat_row['toolPath']!r} filename={chat_row['filename']!r}")
-
-    if os.path.isfile(roster_path):
-        roster = await atlantis.client_command("@roster_list")
-    else:
-        await atlantis.client_log(f"Getting scenes")
-        scenes = await atlantis.client_command("@scene_list")
-        if not scenes:
-            raise RuntimeError("No scenes found")
-        scene = scenes[0]
-        roster = await atlantis.client_command(f"@roster_create {scene}")
-        await atlantis.client_log(f"game scene: {scene!r}")
-
-    caller_sid = atlantis.get_caller()
-    bound_row = next((row for row in roster if row.get("session_key") == session_key), None)
-    if bound_row is None and caller_sid:
-        bound_row = next(
-            (
-                row for row in roster
-                if row.get("ai") is False and row.get("sid") == caller_sid
-            ),
-            None,
-        )
-    open_slots = [row for row in roster if not str(row.get("session_key", "") or "").strip()]
-    if bound_row is None and open_slots:
-        bound_row = await atlantis.client_command(f"@roster_bind {open_slots[0]['key']}")
-    if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
-        location = bot_entry_location(str(bound_row.get("bot_sid", "") or ""))
-        await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
-    if bound_row and not bound_row.get("cancelled"):
-        from .camera import camera_follow
-
-        await camera_follow(game_key, str(bound_row["key"]))
 
 
 @public
@@ -416,3 +366,61 @@ async def _game_join_authorized(game_key: str, data_dir: str, meta: Dict[str, An
     await atlantis.client_command("/cursor join", {"game_key": game_key})
     await game_init(game_key)
     return {"game_key": game_key}
+
+
+
+
+
+@public
+async def game_init(game_key: str):
+
+    # make sure game exists
+    data_dir = require_membership(game_key)
+    session_key = atlantis.get_session_key()
+    roster_path = os.path.join(data_dir, "roster.json")
+
+    # make sure chat callback is set
+    callbacks = await atlantis.client_command("/callback list")
+    chat_row = next(row for row in callbacks if row["mode"] == "chat")
+
+    if not chat_row["toolPath"]:
+        await atlantis.client_command("callback set chat auto")
+
+        callbacks = await atlantis.client_command("/callback list")
+        chat_row = next(row for row in callbacks if row["mode"] == "chat")
+
+
+
+    await atlantis.client_log(f"chat callback: toolPath={chat_row['toolPath']!r} filename={chat_row['filename']!r}")
+
+    if os.path.isfile(roster_path):
+        roster = await atlantis.client_command("@roster_list")
+    else:
+        await atlantis.client_log(f"Getting scenes")
+        scenes = await atlantis.client_command("@scene_list")
+        if not scenes:
+            raise RuntimeError("No scenes found")
+        scene = scenes[0]
+        roster = await atlantis.client_command(f"@roster_create {scene}")
+        await atlantis.client_log(f"game scene: {scene!r}")
+
+    caller_sid = atlantis.get_caller()
+    bound_row = next((row for row in roster if row.get("session_key") == session_key), None)
+    if bound_row is None and caller_sid:
+        bound_row = next(
+            (
+                row for row in roster
+                if row.get("ai") is False and row.get("sid") == caller_sid
+            ),
+            None,
+        )
+    open_slots = [row for row in roster if not str(row.get("session_key", "") or "").strip()]
+    if bound_row is None and open_slots:
+        bound_row = await atlantis.client_command(f"@roster_bind {open_slots[0]['key']}")
+    if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
+        location = bot_entry_location(str(bound_row.get("bot_sid", "") or ""))
+        await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
+    if bound_row and not bound_row.get("cancelled"):
+        from .camera import camera_follow
+
+        await camera_follow(game_key, str(bound_row["key"]))
