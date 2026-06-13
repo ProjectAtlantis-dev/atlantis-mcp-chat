@@ -12,6 +12,7 @@ Location and outer joins against standable locations — see that function.
 
 import atlantis
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .common import (
@@ -41,6 +42,10 @@ def _load_cameras(game_key: str) -> Dict[str, Dict[str, Any]]:
 
 def _save_cameras(game_key: str, cameras: Dict[str, Dict[str, Any]]) -> None:
     _write_json(_cameras_path(game_key), cameras)
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def _location_default_camera_align(location: str) -> str:
@@ -83,10 +88,10 @@ async def _paint_location(location: str) -> None:
     await atlantis.set_background(background, vertical_align=align)
 
 
-def _camera_rows(game_key: str) -> List[Dict[str, str]]:
+def _camera_rows(game_key: str) -> List[Dict[str, Any]]:
     """Pure data: outer join of standable locations against resolved cameras."""
     cameras = _load_cameras(game_key)
-    rows: List[Dict[str, str]] = []
+    rows: List[Dict[str, Any]] = []
     seen_locations: set[str] = set()
     for terminal_key, entry in cameras.items():
         location = _resolve_camera_location(game_key, entry)
@@ -98,24 +103,29 @@ def _camera_rows(game_key: str) -> List[Dict[str, str]]:
             "terminal": terminal_key,
             "location": location,
             "roster_slot": str(entry.get("slot_key", "") or "").strip() if target_type == "slot" else "",
+            "updated_at": entry.get("updated_at", ""),
         })
 
     for location in _leaf_location_keys():
         if location not in seen_locations:
-            rows.append({"terminal": "", "location": location, "roster_slot": ""})
+            rows.append({"terminal": "", "location": location, "roster_slot": "", "updated_at": ""})
 
     return sorted(rows, key=lambda row: (row["location"], row["terminal"], row["roster_slot"]))
 
 
-async def _render_cameras(game_key: str) -> List[Dict[str, str]]:
+async def _render_cameras(game_key: str) -> List[Dict[str, Any]]:
     """Push the camera table to the client and return the rows."""
     rows = _camera_rows(game_key)
-    await atlantis.client_data("Cameras", rows)
+    await atlantis.client_data("Cameras", rows, {
+        "updated_at": {
+            "type": "when"
+        }
+    })
     return rows
 
 
 @public
-async def camera_list(game_key: str) -> List[Dict[str, str]]:
+async def camera_list(game_key: str) -> List[Dict[str, Any]]:
     """Show which Location each terminal is watching in this game."""
     require_membership(game_key)
     return await _render_cameras(game_key)
@@ -147,7 +157,11 @@ async def camera_bind(game_key: str, location: str) -> Dict[str, str]:
     _location_default_camera_align(location)
 
     cameras = _load_cameras(game_key)
-    cameras[terminal_key] = {"target_type": "location", "location": location}
+    cameras[terminal_key] = {
+        "target_type": "location",
+        "location": location,
+        "updated_at": _now_iso(),
+    }
     _save_cameras(game_key, cameras)
 
     await _paint_location(location)
@@ -172,7 +186,11 @@ async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
 
     cameras = _load_cameras(game_key)
     slot_key = str(slot_key).strip()
-    cameras[terminal_key] = {"target_type": "slot", "slot_key": slot_key}
+    cameras[terminal_key] = {
+        "target_type": "slot",
+        "slot_key": slot_key,
+        "updated_at": _now_iso(),
+    }
     _save_cameras(game_key, cameras)
 
     await atlantis.client_log(
