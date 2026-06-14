@@ -2,7 +2,7 @@
 
 import atlantis
 
-
+@public
 @homepage
 async def homepage() -> dict:
     """Return startup commands."""
