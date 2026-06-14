@@ -194,7 +194,7 @@ async def term_glass() -> None:
         '}' +
 
         'body.terminal-frosted .monaco-editor{' +
-        ' background-color:rgba(8,10,18,0.16) !important;' +
+        ' background-color:rgba(8,10,18,0.28) !important;' +
         ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
         ' backdrop-filter:blur(6px) saturate(112%);' +
         ' --vscode-focusBorder:rgba(255,255,255,0.22) !important;' +
@@ -228,7 +228,7 @@ async def term_glass() -> None:
         '}' +
 
         'body.terminal-frosted .monaco-editor .lines-content.monaco-editor-background{' +
-        ' background-image:linear-gradient(to top, rgba(24,24,44,0.16), rgba(10,10,18,0.08)) !important;' +
+        ' background-image:linear-gradient(to top, rgba(24,24,44,0.24), rgba(10,10,18,0.16)) !important;' +
         '}' +
 
         'body.terminal-frosted .jsPanel,' +
