@@ -131,6 +131,45 @@ def game_find_latest_owned() -> Optional[str]:
     return matches[0][1]
 
 
+@public
+async def game_find_current() -> str:
+    """Return the existing game for the current Atlantis game window/session."""
+    user_game_id = atlantis.get_user_game_id()
+    if user_game_id is None:
+        raise RuntimeError("No user_game_id in this call context")
+
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+
+    matches = []
+    for game in await game_list():
+        if str(game.get("user_game_id")) != str(user_game_id):
+            continue
+
+        game_key = str(game.get("game_key") or "").strip()
+        if not game_key:
+            continue
+
+        data_dir = require_game_dir(game_key)
+        meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+        members = meta.get("members") or {}
+        if isinstance(members, dict) and session_key in members:
+            matches.append(game_key)
+
+    if not matches:
+        raise RuntimeError(
+            f"No existing game found for user_game_id={user_game_id!r} "
+            f"session_key={session_key!r}"
+        )
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"Multiple existing games found for user_game_id={user_game_id!r} "
+            f"session_key={session_key!r}: {', '.join(matches)}"
+        )
+    return matches[0]
+
+
 async def _game_resume(game_key: str) -> str:
     data_dir = require_game_dir(game_key)
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}
@@ -232,7 +271,7 @@ async def game_choose_existing() -> Optional[str]:
 
     choice = await modal_menu(
         choices,
-        title="Resume game",
+        title="Game",
         heading="Choose a game",
     )
     if choice is None:
@@ -243,47 +282,6 @@ async def game_choose_existing() -> Optional[str]:
     if await _game_redirect_if_user_game_mismatch(game_key):
         return None
     return game_key
-
-
-@public
-async def game_find_or_create() -> str:
-    """Ask whether to resume an existing game or create a new one."""
-    from .modal import modal_menu
-
-    if not await game_list():
-        keys = await game_new()
-        game_key = keys["game_key"]
-        await atlantis.client_command("/cursor join", keys)
-        await game_init(game_key)
-        return game_key
-
-    choice = await modal_menu(
-        [
-            {"id": "resume", "text": "Resume existing game"},
-            {"id": "create", "text": "Create new game"},
-        ],
-        title="Game",
-        heading="What do you want to do?",
-        width_ratio=0.5,
-    )
-    if choice is None:
-        raise RuntimeError("Game selection cancelled")
-
-    if choice.get("id") == "resume":
-        game_key = await game_choose_existing()
-        if not game_key:
-            raise RuntimeError("Game selection cancelled")
-        return await _game_resume(game_key)
-
-    keys = await game_new()
-    game_key = keys["game_key"]
-    await atlantis.client_command("/cursor join", keys)
-    await game_init(game_key)
-    return game_key
-
-# % ls
-
-# % "Hello"
 
 
 
@@ -449,7 +447,7 @@ async def game_join() -> Dict[str, Any]:
     entered_game_key = await modal_string(
         "Enter game key:",
         submit_label="Next",
-        title="Join game",
+        title="Game",
         submitting_label="Checking...",
         empty_error="Enter the game key to continue.",
         autocomplete="off",
@@ -507,8 +505,80 @@ async def _game_join_authorized(game_key: str, data_dir: str, meta: Dict[str, An
 
 
 
+
+
+@public
+async def game_find_or_create() -> str:
+    """Ask whether to resume an existing game or create a new one."""
+    from .modal import modal_menu
+
+    if not await game_list():
+        keys = await game_new()
+        game_key = keys["game_key"]
+        await atlantis.client_command("/cursor join", keys)
+        await game_init(game_key)
+        return game_key
+
+    choice = await modal_menu(
+        [
+            {"id": "resume", "text": "Resume existing game"},
+            {"id": "create", "text": "Create new game"},
+        ],
+        title="Game",
+        heading="What do you want to do?",
+        width_ratio=0.5,
+    )
+    if choice is None:
+        raise RuntimeError("Game selection cancelled")
+
+    if choice.get("id") == "resume":
+        game_key = await game_choose_existing()
+        if not game_key:
+            raise RuntimeError("Game selection cancelled")
+        return await _game_resume(game_key)
+
+    keys = await game_new()
+    game_key = keys["game_key"]
+    await atlantis.client_command("/cursor join", keys)
+    await game_init(game_key)
+    return game_key
+
+# % ls
+
+# % "Hello"
+
+
+
+
+
+
+
+# % game video notLove_mobile.mp4
+
+
+# % term glass
+
+
+# % ls atl*
+
+# % atlantis "get_session_key"
+
+# % atlantis "get_caller"
+
+# % atlantis "get_user_game_id"
+
+# % atlantis "get_caller_shell_path"
+
+# % cat atlantis
+
+# % cursor show
+
 @public
 async def game_init(game_key: str):
+
+
+    # % atlantis "get_session_key"
+
 
     # make sure game exists
     data_dir = require_membership(game_key)

@@ -349,6 +349,9 @@ async def modal_menu(
     atlantis.session_shared.set(f"{modal_menu_id}:choices", choice_by_id)
     html = f"""
 <style>
+  .jsPanel:has(#modalmenu-{uid}:not(.modal-menu-ready)) {{
+    visibility: hidden;
+  }}
 {_modal_shell_css(f"#modalmenu-{uid}", padding=22, heading_margin="4px 0 16px", heading_font_size=24, heading_line_height=1.15)}
   #modalmenu-{uid} {{
     width: 100%;
@@ -389,6 +392,9 @@ async def modal_menu(
     font-size: 18px;
     font-weight: 400;
     text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     cursor: pointer;
   }}
   #modalmenu-{uid} .menu-choice-grid {{
@@ -433,8 +439,89 @@ async def modal_menu(
   function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
   function reveal(root) {{
     root.style.visibility = "visible";
+    root.classList.add("modal-menu-ready");
   }}
-  function centerDialog(root) {{
+  function px(value) {{
+    var number = parseFloat(value);
+    return Number.isFinite(number) ? number : 0;
+  }}
+  function horizontalBox(style) {{
+    return px(style.paddingLeft) + px(style.paddingRight) + px(style.borderLeftWidth) + px(style.borderRightWidth);
+  }}
+  function horizontalBorder(style) {{
+    return px(style.borderLeftWidth) + px(style.borderRightWidth);
+  }}
+  function textWidth(element) {{
+    var text = (element.textContent || "").trim();
+    if (!text) return 0;
+    var style = window.getComputedStyle(element);
+    var canvas = textWidth.canvas || (textWidth.canvas = document.createElement("canvas"));
+    var context = canvas.getContext("2d");
+    context.font = style.font || [style.fontStyle, style.fontVariant, style.fontWeight, style.fontSize, style.fontFamily].join(" ");
+    return Math.ceil(context.measureText(text).width);
+  }}
+  function collectGridWidths(root) {{
+    var widths = [];
+    Array.prototype.slice.call(root.querySelectorAll(".menu-header, .menu-choice-grid")).forEach(function(grid) {{
+      Array.prototype.slice.call(grid.children || []).forEach(function(cell, index) {{
+        widths[index] = Math.max(widths[index] || 0, Math.ceil(cell.scrollWidth), textWidth(cell) + 2);
+      }});
+    }});
+    return widths;
+  }}
+  function gridGap(root) {{
+    var grid = root.querySelector(".menu-header, .menu-choice-grid");
+    if (!grid) return 0;
+    var style = window.getComputedStyle(grid);
+    return px(style.columnGap || style.gap);
+  }}
+  function gridWidth(widths, gap) {{
+    if (!widths.length) return 0;
+    return widths.reduce(function(total, width) {{
+      return total + width;
+    }}, 0) + gap * Math.max(0, widths.length - 1);
+  }}
+  function applyGridWidths(root, widths, enabled) {{
+    var template = enabled && widths.length ? widths.map(function(width) {{ return width + "px"; }}).join(" ") : "";
+    Array.prototype.slice.call(root.querySelectorAll(".menu-header, .menu-choice-grid")).forEach(function(grid) {{
+      grid.style.gridTemplateColumns = template;
+    }});
+  }}
+  function elementGridWidth(grid) {{
+    var cells = Array.prototype.slice.call(grid.children || []);
+    if (!cells.length) return 0;
+    var style = window.getComputedStyle(grid);
+    var gap = px(style.columnGap || style.gap);
+    return cells.reduce(function(total, cell) {{
+      return total + Math.ceil(cell.scrollWidth);
+    }}, 0) + gap * Math.max(0, cells.length - 1);
+  }}
+  function menuMetrics(root) {{
+    var rootStyle = window.getComputedStyle(root);
+    var rootBox = horizontalBox(rootStyle);
+    var columnWidths = collectGridWidths(root);
+    var gap = gridGap(root);
+    var fullGridWidth = gridWidth(columnWidths, gap);
+    var needed = 320;
+    var heading = root.querySelector("h2");
+    if (heading) {{
+      needed = Math.max(needed, Math.max(Math.ceil(heading.scrollWidth), textWidth(heading)) + rootBox);
+    }}
+    var header = root.querySelector(".menu-header");
+    if (header) {{
+      needed = Math.max(needed, (fullGridWidth || elementGridWidth(header)) + horizontalBox(window.getComputedStyle(header)) + rootBox);
+    }}
+    Array.prototype.slice.call(root.querySelectorAll(".menu-choice")).forEach(function(button) {{
+      var buttonStyle = window.getComputedStyle(button);
+      var grid = button.querySelector(".menu-choice-grid");
+      var buttonWidth = grid
+        ? (fullGridWidth || elementGridWidth(grid)) + horizontalBox(buttonStyle)
+        : Math.max(Math.ceil(button.scrollWidth) + horizontalBorder(buttonStyle), textWidth(button) + horizontalBox(buttonStyle));
+      needed = Math.max(needed, buttonWidth + rootBox);
+    }});
+    return {{ width: needed, columns: columnWidths }};
+  }}
+  function centerDialog(root, shouldReveal) {{
     var host = null;
     var node = root;
     for (var i = 0; i < 8 && node && node !== document.body; i++) {{
@@ -452,17 +539,22 @@ async def modal_menu(
       return;
     }}
     var rect = host.getBoundingClientRect();
+    var rootRect = root.getBoundingClientRect();
     if (!rect.width || !rect.height) {{
-      reveal(root);
+      if (shouldReveal) reveal(root);
       return;
     }}
     if (!host.dataset.modalMenuOriginalWidth) {{
       host.dataset.modalMenuOriginalWidth = String(rect.width);
     }}
     var originalWidth = Number(host.dataset.modalMenuOriginalWidth) || rect.width;
-    var targetWidth = Math.round(originalWidth * {width_ratio_js});
+    var metrics = menuMetrics(root);
+    var hostExtraWidth = Math.max(0, Math.ceil(rect.width - rootRect.width));
+    var targetWidth = Math.max(Math.round(originalWidth * {width_ratio_js}), metrics.width + hostExtraWidth + 24);
     var viewportMax = Math.max(320, window.innerWidth - 32);
-    host.style.width = Math.min(Math.max(320, targetWidth), viewportMax) + "px";
+    var finalWidth = Math.min(Math.max(320, targetWidth), viewportMax);
+    applyGridWidths(root, metrics.columns, finalWidth - hostExtraWidth >= metrics.width);
+    host.style.width = finalWidth + "px";
     host.style.maxWidth = "calc(100vw - 32px)";
     host.style.left = "50%";
     host.style.top = "50%";
@@ -470,13 +562,13 @@ async def modal_menu(
     host.style.bottom = "auto";
     host.style.transform = "translate(-50%, -50%)";
     host.style.margin = "0";
-    reveal(root);
+    if (shouldReveal) reveal(root);
   }}
   function scheduleCenter(root) {{
-    centerDialog(root);
+    centerDialog(root, false);
     requestAnimationFrame(function() {{
-      centerDialog(root);
-      setTimeout(function() {{ centerDialog(root); }}, 180);
+      centerDialog(root, false);
+      setTimeout(function() {{ centerDialog(root, true); }}, 180);
     }});
   }}
   async function cancel() {{
@@ -497,7 +589,6 @@ async def modal_menu(
     if (!buttons.length) return;
     scheduleCenter(root);
     buttons[0].focus({{ preventScroll: true }});
-    setTimeout(function() {{ scheduleCenter(root); }}, 120);
     buttons.forEach(function(button) {{
       button.addEventListener("click", async function() {{
         if (settled) return;

@@ -2,7 +2,6 @@
 
 import atlantis
 import os
-import shlex
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +9,7 @@ from .bot import load_bot
 from .common import _read_json, _write_json
 from .game import require_membership
 from .location import _connects_to, _require_leaf, load_location
+from .modal import modal_string
 from .scene import _load_scene, _scene_name
 
 
@@ -195,12 +195,10 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     if existing_session and existing_session != session_key:
         raise RuntimeError(f"Slot {slot_key!r} is already bound")
 
-    display_name = await atlantis.client_command(
-        "@modal_string "
-        f"{shlex.quote('What name should people call you?')} "
-        f"{shlex.quote('Your name')} "
-        f"{shlex.quote('')} "
-        f"{shlex.quote('Join')}"
+    display_name = await modal_string(
+        "What name should people call you?",
+        title="Game",
+        submit_label="Join",
     )
     if display_name is None:
         return {"cancelled": True, "key": slot_key}

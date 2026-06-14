@@ -10,7 +10,7 @@ from .chat import (
     analyze_participants, fetch_transcript,
 )
 from .common import _read_json
-from .game import _game_roster_scene, game_find_or_create, require_membership
+from .game import _game_roster_scene, game_find_current, require_membership
 from .roster import _load_game_roster
 from .turn import bot_turn
 
@@ -47,7 +47,7 @@ async def chat_callback():
 
     atlantis.session_shared.set(_BUSY_KEY, request_id)
     try:
-        game_key = await game_find_or_create()
+        game_key = await game_find_current()
         _require_roster_assigned(game_key)
         await _handle_chat(game_key)
     finally:
