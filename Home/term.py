@@ -194,7 +194,7 @@ async def term_glass() -> None:
         '}' +
 
         'body.terminal-frosted .monaco-editor{' +
-        ' background-color:rgba(8,10,18,0.28) !important;' +
+        ' background-color:rgba(8,10,18,0.34) !important;' +
         ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
         ' backdrop-filter:blur(6px) saturate(112%);' +
         ' --vscode-focusBorder:rgba(255,255,255,0.22) !important;' +
@@ -228,7 +228,7 @@ async def term_glass() -> None:
         '}' +
 
         'body.terminal-frosted .monaco-editor .lines-content.monaco-editor-background{' +
-        ' background-image:linear-gradient(to top, rgba(24,24,44,0.24), rgba(10,10,18,0.16)) !important;' +
+        ' background-image:linear-gradient(to top, rgba(24,24,44,0.30), rgba(10,10,18,0.20)) !important;' +
         '}' +
 
         'body.terminal-frosted .jsPanel,' +
@@ -243,6 +243,45 @@ async def term_glass() -> None:
         ' background-color:rgba(12,18,28,0.16) !important;' +
         ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
         ' backdrop-filter:blur(6px) saturate(112%);' +
+        '}' +
+
+        'body.terminal-frosted [id^="displayname-"],' +
+        'body.terminal-frosted [id^="modalmenu-"]{' +
+        ' background-image:linear-gradient(to bottom, rgba(20,34,48,0.30), rgba(20,50,60,0.22)) !important;' +
+        ' background-color:rgba(12,18,28,0.18) !important;' +
+        ' -webkit-backdrop-filter:blur(8px) saturate(118%);' +
+        ' backdrop-filter:blur(8px) saturate(118%);' +
+        ' border-color:rgba(255,255,255,0.16) !important;' +
+        ' box-shadow:0 12px 34px rgba(0,0,0,0.30) !important;' +
+        '}' +
+
+        'body.terminal-frosted [id^="displayname-"] input,' +
+        'body.terminal-frosted [id^="modalmenu-"] .menu-choice{' +
+        ' background:rgba(7,15,22,0.24) !important;' +
+        ' background-color:rgba(7,15,22,0.24) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border-color:rgba(255,255,255,0.15) !important;' +
+        '}' +
+
+        'body.terminal-frosted [id^="displayname-"] input:focus{' +
+        ' outline-color:rgba(255,255,255,0.28) !important;' +
+        '}' +
+
+        'body.terminal-frosted [id^="displayname-"] button{' +
+        ' background:rgba(20,120,120,0.34) !important;' +
+        ' background-color:rgba(20,120,120,0.34) !important;' +
+        ' -webkit-backdrop-filter:blur(6px) saturate(112%);' +
+        ' backdrop-filter:blur(6px) saturate(112%);' +
+        ' border:1px solid rgba(255,255,255,0.16) !important;' +
+        '}' +
+
+        'body.terminal-frosted [id^="displayname-"] button:hover,' +
+        'body.terminal-frosted [id^="modalmenu-"] .menu-choice:hover,' +
+        'body.terminal-frosted [id^="modalmenu-"] .menu-choice:focus{' +
+        ' background:rgba(20,255,208,0.16) !important;' +
+        ' background-color:rgba(20,255,208,0.16) !important;' +
+        ' border-color:rgba(255,255,255,0.24) !important;' +
         '}';
 
       document.head.appendChild(s);
