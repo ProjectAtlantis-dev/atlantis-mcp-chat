@@ -66,19 +66,17 @@ def _slot_location(game_key: str, slot_key: str) -> Optional[str]:
         raise ValueError("slot_key required")
 
     for row in _load_game_roster(game_key):
-        if str(row.get("key", "") or "").strip() == slot_key:
-            location = str(row.get("location", "") or "").strip()
-            return location or None
+        if row.get("key") == slot_key:
+            return row.get("location")
     raise ValueError(f"Unknown roster slot: {slot_key!r}")
 
 
 def _resolve_camera_location(game_key: str, entry: Dict[str, Any]) -> Optional[str]:
-    target_type = str(entry.get("target_type", "") or "").strip()
+    target_type = entry.get("target_type")
     if target_type == "location":
-        location = str(entry.get("location", "") or "").strip()
-        return location or None
+        return entry.get("location")
     if target_type == "slot":
-        return _slot_location(game_key, str(entry.get("slot_key", "") or ""))
+        return _slot_location(game_key, entry["slot_key"])
     raise ValueError(f"Unknown camera target_type: {target_type!r}")
 
 
@@ -98,11 +96,11 @@ def _camera_rows(game_key: str) -> List[Dict[str, Any]]:
         if not location:
             continue
         seen_locations.add(location)
-        target_type = str(entry.get("target_type", "") or "").strip()
+        target_type = entry.get("target_type")
         rows.append({
             "terminal": terminal_key,
             "location": location,
-            "roster_slot": str(entry.get("slot_key", "") or "").strip() if target_type == "slot" else "",
+            "roster_slot": entry.get("slot_key", "") if target_type == "slot" else "",
             "updated_at": entry.get("updated_at", ""),
         })
 
@@ -169,9 +167,12 @@ async def camera_bind(game_key: str, location: str) -> Dict[str, str]:
     return {"terminal": terminal_key, "target_type": "location", "location": location}
 
 
-@visible
-async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
-    """Bind the calling terminal to follow a roster slot's current Location."""
+async def _camera_follow_slot(
+    game_key: str,
+    slot_key: str,
+    *,
+    replace_session_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     require_membership(game_key)
     terminal_key = atlantis.get_terminal_key()
     if not terminal_key:
@@ -184,14 +185,37 @@ async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
     location_image_path(location)  # resolve + validate before mutating
     _location_default_camera_align(location)
 
-    cameras = _load_cameras(game_key)
     slot_key = str(slot_key).strip()
-    cameras[terminal_key] = {
-        "target_type": "slot",
-        "slot_key": slot_key,
-        "updated_at": _now_iso(),
-    }
-    _save_cameras(game_key, cameras)
+    cameras = _load_cameras(game_key)
+    changed = False
+    session_keys = replace_session_keys or []
+    if session_keys:
+        for existing_terminal in list(cameras):
+            if existing_terminal == terminal_key:
+                continue
+            if not any(
+                existing_terminal == session_key
+                or existing_terminal.startswith(f"{session_key}:")
+                for session_key in session_keys
+            ):
+                continue
+            del cameras[existing_terminal]
+            changed = True
+
+    existing = cameras.get(terminal_key) or {}
+    if (
+        existing.get("target_type") != "slot"
+        or existing.get("slot_key") != slot_key
+    ):
+        cameras[terminal_key] = {
+            "target_type": "slot",
+            "slot_key": slot_key,
+            "updated_at": _now_iso(),
+        }
+        changed = True
+
+    if changed:
+        _save_cameras(game_key, cameras)
 
     await atlantis.client_log(
         f"camera_follow terminal={terminal_key!r} slot={slot_key!r} location={location!r}"
@@ -207,6 +231,12 @@ async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
     }
 
 
+@visible
+async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
+    """Bind the calling terminal to follow a roster slot's current Location."""
+    return await _camera_follow_slot(game_key, slot_key)
+
+
 async def camera_slot_moved(game_key: str, slot_key: str, location: Optional[str]) -> List[str]:
     """Refresh camera table after a followed slot moves.
 
@@ -217,9 +247,9 @@ async def camera_slot_moved(game_key: str, slot_key: str, location: Optional[str
     """
     moved: List[str] = []
     for terminal_key, entry in _load_cameras(game_key).items():
-        if str(entry.get("target_type", "") or "") != "slot":
+        if entry.get("target_type") != "slot":
             continue
-        if str(entry.get("slot_key", "") or "").strip() == str(slot_key or "").strip():
+        if entry.get("slot_key") == slot_key:
             moved.append(terminal_key)
 
     if location and atlantis.get_terminal_key() in moved:

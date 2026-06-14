@@ -71,6 +71,10 @@ async def modal_string(
     html = f"""
 <style>
 {_modal_shell_css(f"#displayname-{uid}", padding=28, heading_margin="10px 0 28px", heading_font_size=30, heading_line_height=1.1)}
+  #displayname-{uid} {{
+    width: 100%;
+    visibility: hidden;
+  }}
   #displayname-{uid} form {{
     display: grid;
     gap: 12px;
@@ -168,6 +172,9 @@ async def modal_string(
   var settled = false;
   var observer = null;
   function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function reveal(root) {{
+    root.style.visibility = "visible";
+  }}
   function centerDialog(root) {{
     var host = null;
     var node = root;
@@ -181,15 +188,30 @@ async def modal_string(
       }}
       node = node.parentElement;
     }}
-    if (!host) return;
+    if (!host) {{
+      reveal(root);
+      return;
+    }}
     var rect = host.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+    if (!rect.width || !rect.height) {{
+      reveal(root);
+      return;
+    }}
+    if (!host.dataset.modalStringOriginalWidth) {{
+      host.dataset.modalStringOriginalWidth = String(rect.width);
+    }}
+    var originalWidth = Number(host.dataset.modalStringOriginalWidth) || rect.width;
+    var targetWidth = Math.round(originalWidth * 0.5);
+    var viewportMax = Math.max(320, window.innerWidth - 32);
+    host.style.width = Math.min(Math.max(320, targetWidth), viewportMax) + "px";
+    host.style.maxWidth = "calc(100vw - 32px)";
     host.style.left = "50%";
     host.style.top = "50%";
     host.style.right = "auto";
     host.style.bottom = "auto";
     host.style.transform = "translate(-50%, -50%)";
     host.style.margin = "0";
+    reveal(root);
   }}
   function scheduleCenter(root) {{
     centerDialog(root);
@@ -258,6 +280,7 @@ async def modal_menu(
     choices: List[Dict[str, Any]],
     title: str = "",
     heading: str = "",
+    width_ratio: float = 0.67,
 ) -> Optional[Dict[str, Any]]:
     """Pop up a modal menu and return the selected choice object.
 
@@ -280,16 +303,46 @@ async def modal_menu(
         if choice_id in choice_by_id:
             raise ValueError(f"duplicate choice id: {choice_id!r}")
         choice_by_id[choice_id] = choice
+        columns = choice.get("columns")
+        if isinstance(columns, list) and columns:
+            button_content = (
+                '<span class="menu-choice-grid">'
+                + "".join(
+                    f'<span class="menu-choice-cell">{html_lib.escape(str(column or ""))}</span>'
+                    for column in columns
+                )
+                + "</span>"
+            )
+        else:
+            button_content = html_lib.escape(choice_text)
         choice_buttons.append(
             '<button type="button" class="menu-choice" role="menuitem" '
             f'data-choice-id="{html_lib.escape(choice_id, quote=True)}">'
-            f"{html_lib.escape(choice_text)}</button>"
+            f"{button_content}</button>"
         )
 
     uid = uuid.uuid4().hex[:8]
     modal_menu_id = f"modal_menu:{uid}"
     modal_menu_id_js = json.dumps(modal_menu_id)
+    width_ratio = max(0.25, min(1.0, float(width_ratio or 0.67)))
+    width_ratio_js = json.dumps(width_ratio)
     heading_block = f"<h2>{html_lib.escape(heading)}</h2>" if heading else ""
+    table_headers = None
+    for choice in choices:
+        headers = choice.get("column_headers")
+        if isinstance(headers, list) and headers:
+            table_headers = headers
+            break
+    header_block = ""
+    if table_headers:
+        header_block = (
+            '<div class="menu-header" aria-hidden="true">'
+            + "".join(
+                f'<span class="menu-header-cell">{html_lib.escape(str(header or ""))}</span>'
+                for header in table_headers
+            )
+            + "</div>"
+        )
     loop = asyncio.get_running_loop()
     future = loop.create_future()
     atlantis.session_shared.set(f"{modal_menu_id}:future", future)
@@ -297,10 +350,31 @@ async def modal_menu(
     html = f"""
 <style>
 {_modal_shell_css(f"#modalmenu-{uid}", padding=22, heading_margin="4px 0 16px", heading_font_size=24, heading_line_height=1.15)}
+  #modalmenu-{uid} {{
+    width: 100%;
+    visibility: hidden;
+  }}
   #modalmenu-{uid} .menu-list {{
     display: grid;
     gap: 8px;
     width: 100%;
+  }}
+  #modalmenu-{uid} .menu-header {{
+    display: grid;
+    grid-template-columns: minmax(118px, 1.1fr) minmax(74px, 0.75fr) minmax(74px, 0.75fr) minmax(58px, 0.55fr);
+    gap: 10px;
+    padding: 0 14px 2px;
+    color: rgba(255, 250, 240, 0.68);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }}
+  #modalmenu-{uid} .menu-header-cell {{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }}
   #modalmenu-{uid} .menu-choice {{
     box-sizing: border-box;
@@ -313,9 +387,21 @@ async def modal_menu(
     border-radius: 6px;
     font: inherit;
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 400;
     text-align: left;
     cursor: pointer;
+  }}
+  #modalmenu-{uid} .menu-choice-grid {{
+    display: grid;
+    grid-template-columns: minmax(118px, 1.1fr) minmax(74px, 0.75fr) minmax(74px, 0.75fr) minmax(58px, 0.55fr);
+    gap: 10px;
+    align-items: center;
+  }}
+  #modalmenu-{uid} .menu-choice-cell {{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }}
   #modalmenu-{uid} .menu-choice:hover,
   #modalmenu-{uid} .menu-choice:focus {{
@@ -331,6 +417,7 @@ async def modal_menu(
 <section id="modalmenu-{uid}" aria-label="Menu">
   {heading_block}
   <div class="menu-list" role="menu">
+    {header_block}
     {"".join(choice_buttons)}
   </div>
 </section>
@@ -344,6 +431,9 @@ async def modal_menu(
   var settled = false;
   var observer = null;
   function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function reveal(root) {{
+    root.style.visibility = "visible";
+  }}
   function centerDialog(root) {{
     var host = null;
     var node = root;
@@ -357,15 +447,30 @@ async def modal_menu(
       }}
       node = node.parentElement;
     }}
-    if (!host) return;
+    if (!host) {{
+      reveal(root);
+      return;
+    }}
     var rect = host.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+    if (!rect.width || !rect.height) {{
+      reveal(root);
+      return;
+    }}
+    if (!host.dataset.modalMenuOriginalWidth) {{
+      host.dataset.modalMenuOriginalWidth = String(rect.width);
+    }}
+    var originalWidth = Number(host.dataset.modalMenuOriginalWidth) || rect.width;
+    var targetWidth = Math.round(originalWidth * {width_ratio_js});
+    var viewportMax = Math.max(320, window.innerWidth - 32);
+    host.style.width = Math.min(Math.max(320, targetWidth), viewportMax) + "px";
+    host.style.maxWidth = "calc(100vw - 32px)";
     host.style.left = "50%";
     host.style.top = "50%";
     host.style.right = "auto";
     host.style.bottom = "auto";
     host.style.transform = "translate(-50%, -50%)";
     host.style.margin = "0";
+    reveal(root);
   }}
   function scheduleCenter(root) {{
     centerDialog(root);

@@ -6,6 +6,7 @@ import re
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
+from urllib.parse import urlencode
 
 from .bot import bot_entry_location
 from .common import home_path, _read_json, _write_json
@@ -52,11 +53,28 @@ def _game_roster_scene(meta: Dict[str, Any]) -> Optional[str]:
 
 def _participant_sids(meta: Dict[str, Any]) -> list:
     members = meta.get("members") or {}
-    return sorted({
-        str(rec.get("sid", "") or "").strip()
-        for rec in members.values()
-        if isinstance(rec, dict) and str(rec.get("sid", "") or "").strip()
-    })
+    sids: set[str] = set()
+    if isinstance(members, dict):
+        for rec in members.values():
+            if not isinstance(rec, dict):
+                continue
+            sid = str(rec.get("sid") or "").strip()
+            if sid:
+                sids.add(sid)
+    return sorted(sids)
+
+
+def _caller_session_keys(meta: Dict[str, Any], session_key: str) -> list:
+    caller_sid = atlantis.get_caller()
+    members = meta.get("members") or {}
+    session_keys = {session_key}
+    if caller_sid and isinstance(members, dict):
+        for member_session_key, rec in members.items():
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("sid") == caller_sid:
+                session_keys.add(member_session_key)
+    return sorted(session_keys)
 
 
 def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
@@ -112,33 +130,151 @@ def game_find_latest_owned() -> Optional[str]:
     matches.sort(reverse=True)
     return matches[0][1]
 
+
+async def _game_resume(game_key: str) -> str:
+    data_dir = require_game_dir(game_key)
+    meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+    members = meta.setdefault("members", {})
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+    if session_key not in members:
+        add_caller_membership(members)
+        _write_json(os.path.join(data_dir, "game.json"), meta)
+    await atlantis.client_log(f"Existing game found: {game_key}")
+    await atlantis.client_command("/cursor join", {"game_key": game_key})
+    await game_init(game_key)
+    return game_key
+
+
+async def _game_redirect_if_user_game_mismatch(game_key: str) -> bool:
+    data_dir = require_game_dir(game_key)
+    meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+    target_user_game_id = meta.get("user_game_id")
+    if target_user_game_id is None:
+        return False
+
+    current_user_game_id = atlantis.get_user_game_id()
+    if str(target_user_game_id) == str(current_user_game_id):
+        return False
+
+    sid = str(meta.get("owner") or atlantis.get_caller() or "").strip()
+    query = {"game": str(target_user_game_id)}
+    if sid:
+        query["sid"] = sid
+    url = f"chat.html?{urlencode(query)}"
+    await atlantis.client_log(f"Redirecting to game window: {url}")
+    await atlantis.client_script(f"window.location.assign({url!r});")
+    return True
+
+
+def _format_game_menu_date(value: Any) -> Optional[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return raw
+    return parsed.strftime("%b %d, %Y, %H:%M")
+
+
+def _format_game_menu_text(game: Dict[str, Any]) -> str:
+    parts = []
+    created = _format_game_menu_date(game.get("created"))
+    if created:
+        parts.append(f"Started {created}")
+    if game.get("owner"):
+        parts.append(f"Owner {game['owner']}")
+    if game.get("roster_scene"):
+        parts.append(f"Scene {game['roster_scene']}")
+    participant_count = game.get("participant_count")
+    if isinstance(participant_count, int):
+        noun = "player" if participant_count == 1 else "players"
+        parts.append(f"{participant_count} {noun}")
+    return " | ".join(parts) or "Untitled game"
+
+
+def _format_game_menu_columns(game: Dict[str, Any]) -> list:
+    created = _format_game_menu_date(game.get("created")) or "Unknown date"
+    owner = str(game.get("owner") or "Unknown owner")
+    scene = str(game.get("roster_scene") or "No scene")
+    participant_count = game.get("participant_count")
+    if isinstance(participant_count, int):
+        participants = str(participant_count)
+    else:
+        participants = "-"
+    return [created, owner, scene, participants]
+
+@public
+async def game_choose_existing() -> Optional[str]:
+    from .modal import modal_menu
+
+    games = await game_list()
+    if not games:
+        raise RuntimeError("No existing games found")
+
+    choices = []
+    for game in games:
+        game_key = str(game.get("game_key", "")).strip()
+        if not game_key:
+            continue
+        choices.append({
+            "id": game_key,
+            "text": _format_game_menu_text(game),
+            "columns": _format_game_menu_columns(game),
+            "column_headers": ["Started", "Owner", "Scene", "Players"],
+            "game_key": game_key,
+        })
+
+    if not choices:
+        raise RuntimeError("No existing games found")
+
+    choice = await modal_menu(
+        choices,
+        title="Resume game",
+        heading="Choose a game",
+    )
+    if choice is None:
+        return None
+    game_key = str(choice.get("game_key") or choice.get("id") or "").strip()
+    if not game_key:
+        return None
+    if await _game_redirect_if_user_game_mismatch(game_key):
+        return None
+    return game_key
+
+
 @public
 async def game_find_or_create() -> str:
-    """Return the caller's newest owned game, creating one if needed.
+    """Ask whether to resume an existing game or create a new one."""
+    from .modal import modal_menu
 
-    The current ownership policy is: reuse the caller's newest owned game; if no
-    owned game exists, create one and run the normal game initialization path.
-    """
-    game_key = game_find_latest_owned()
-    if game_key:
-        data_dir = require_game_dir(game_key)
-        meta = _read_json(os.path.join(data_dir, "game.json")) or {}
-        members = meta.setdefault("members", {})
-        session_key = atlantis.get_session_key()
-        if not session_key:
-            raise RuntimeError("No session key in this call context")
-        if session_key not in members:
-            # A new browser/session from the same caller should keep using the
-            # caller's current game, but must be added as a member first.
-            add_caller_membership(members)
-            _write_json(os.path.join(data_dir, "game.json"), meta)
-        await atlantis.client_log(f"Existing game found: {game_key}")
-        await atlantis.client_command("/cursor join", {"game_key": game_key})
+    if not await game_list():
+        keys = await game_new()
+        game_key = keys["game_key"]
+        await atlantis.client_command("/cursor join", keys)
         await game_init(game_key)
         return game_key
 
-    # First chat for this caller: create a game, join the cursor to it, and run
-    # game_init so callbacks, roster, binding, and initial spawn are ready.
+    choice = await modal_menu(
+        [
+            {"id": "resume", "text": "Resume existing game"},
+            {"id": "create", "text": "Create new game"},
+        ],
+        title="Game",
+        heading="What do you want to do?",
+        width_ratio=0.5,
+    )
+    if choice is None:
+        raise RuntimeError("Game selection cancelled")
+
+    if choice.get("id") == "resume":
+        game_key = await game_choose_existing()
+        if not game_key:
+            raise RuntimeError("Game selection cancelled")
+        return await _game_resume(game_key)
+
     keys = await game_new()
     game_key = keys["game_key"]
     await atlantis.client_command("/cursor join", keys)
@@ -377,6 +513,8 @@ async def game_init(game_key: str):
     # make sure game exists
     data_dir = require_membership(game_key)
     session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
     roster_path = os.path.join(data_dir, "roster.json")
 
     # make sure chat callback is set
@@ -414,13 +552,18 @@ async def game_init(game_key: str):
             ),
             None,
         )
-    open_slots = [row for row in roster if not str(row.get("session_key", "") or "").strip()]
+    open_slots = [row for row in roster if not row.get("session_key")]
     if bound_row is None and open_slots:
         bound_row = await atlantis.client_command(f"@roster_bind {open_slots[0]['key']}")
     if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
-        location = bot_entry_location(str(bound_row.get("bot_sid", "") or ""))
+        location = bot_entry_location(bound_row["bot_sid"])
         await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
     if bound_row and not bound_row.get("cancelled"):
-        from .camera import camera_follow
+        from .camera import _camera_follow_slot
 
-        await camera_follow(game_key, str(bound_row["key"]))
+        meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+        await _camera_follow_slot(
+            game_key,
+            bound_row["key"],
+            replace_session_keys=_caller_session_keys(meta, session_key),
+        )

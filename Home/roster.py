@@ -87,18 +87,18 @@ def _find_roster_row(rows: List[Dict[str, Any]], sid_or_key: str) -> Dict[str, A
 
     matches: List[Dict[str, Any]] = []
     for row in rows:
-        candidates = [str(row.get("key", "")).strip()]
+        candidates = [row.get("key")]
         if row.get("ai") is False:
-            candidates.append(str(row.get("sid", "")).strip())
+            candidates.append(row.get("sid"))
         else:
-            candidates.append(str(row.get("bot_sid", "")).strip())
+            candidates.append(row.get("bot_sid"))
         if needle in candidates:
             matches.append(row)
 
     if not matches:
         raise ValueError(f"Unknown roster sid or slot: {needle!r}")
     if len(matches) > 1:
-        keys = ", ".join(str(row.get("key", "")) for row in matches)
+        keys = ", ".join(row["key"] for row in matches)
         raise ValueError(f"Roster id {needle!r} is ambiguous; use one of these slot keys: {keys}")
     return matches[0]
 
@@ -185,19 +185,19 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     for row in rows:
         if row.get("session_key") == session_key and row.get("key") != slot_key:
             raise RuntimeError(f"Session is already bound to slot {row.get('key')!r}")
-        if str(row.get("key", "")).strip() == slot_key:
+        if row.get("key") == slot_key:
             target = row
 
     if target is None:
         raise ValueError(f"Unknown roster slot: {slot_key!r}")
 
-    existing_session = str(target.get("session_key", "") or "").strip()
+    existing_session = target.get("session_key")
     if existing_session and existing_session != session_key:
         raise RuntimeError(f"Slot {slot_key!r} is already bound")
 
     display_name = await atlantis.client_command(
         "@modal_string "
-        f"{shlex.quote('What should people call you?')} "
+        f"{shlex.quote('What name should people call you?')} "
         f"{shlex.quote('Your name')} "
         f"{shlex.quote('')} "
         f"{shlex.quote('Join')}"
@@ -235,7 +235,7 @@ def _movement_log_label(reason: str) -> str:
 async def _notify_roster_slot_moved(game_key: str, target: Dict[str, Any], location: Optional[str]) -> None:
     from .camera import camera_slot_moved
 
-    await camera_slot_moved(game_key, str(target.get("key", "") or ""), location)
+    await camera_slot_moved(game_key, target["key"], location)
 
 
 def _require_adjacent_move(previous: str, location: str) -> None:
@@ -265,7 +265,7 @@ async def _roster_move(game_key: str, sid_or_slot: str, location: str, reason: s
 
     rows = _load_game_roster(game_key)
     target = _find_roster_row(rows, sid_or_slot)
-    previous = str(target.get("location", "") or "")
+    previous = target.get("location") or ""
     movement_reason = str(reason or "move").strip() or "move"
     if movement_reason == "move":
         _require_adjacent_move(previous, location)
@@ -308,7 +308,7 @@ async def roster_despawn(game_key: str, sid: str) -> Dict[str, Any]:
     """Remove a roster entry from its current Location."""
     rows = _load_game_roster(game_key)
     target = _find_roster_row(rows, sid)
-    previous = str(target.get("location", "") or "")
+    previous = target.get("location") or ""
     target["location"] = None
     target["spawned_at"] = None
 

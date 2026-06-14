@@ -75,7 +75,7 @@ async def _handle_chat(game_key: str):
     if not speaker:
         raise RuntimeError(f"Chat speaker {speaker_sid!r} is not in this game's roster")
 
-    location = str(speaker.get("location", "") or "").strip()
+    location = speaker.get("location")
     if not location:
         raise RuntimeError(f"Chat speaker {speaker_sid!r} has no current location yet")
 
@@ -144,13 +144,13 @@ def _is_ai(row: Dict[str, Any]) -> bool:
 
 
 def _display_name(row: Dict[str, Any]) -> str:
-    return str(row.get("displayName") or row.get("bot_sid") or row.get("sid") or row.get("key") or "unknown")
+    return row.get("displayName") or row.get("bot_sid") or row.get("sid") or row.get("key") or "unknown"
 
 
 def _location_occupants(roster: List[Dict[str, Any]], location: str) -> List[Dict[str, Any]]:
     return [
         row for row in roster
-        if str(row.get("location", "") or "").strip() == location
+        if row.get("location") == location
     ]
 
 
@@ -171,12 +171,12 @@ async def greet_entrant(game_key: str, entrant_sid: str, location: str):
 
 
 async def _respond_as_bot(*, game_key: str, bot_record: dict, transcript: list, roster: list):
-    bot_sid = str(bot_record.get("bot_sid") or "").strip()
+    bot_sid = bot_record.get("bot_sid")
     if not bot_sid:
         raise ValueError(f"Roster row {bot_record.get('key')!r} has no bot_sid")
 
     roster_names = {
-        str(row.get("bot_sid")): str(row.get("displayName"))
+        row.get("bot_sid"): row.get("displayName")
         for row in roster
         if row.get("bot_sid") and row.get("displayName")
     }
