@@ -70,6 +70,16 @@ async def modal_string(
     atlantis.session_shared.set(f"{modal_string_id}:future", future)
     html = f"""
 <style>
+  .jsPanel:has(#displayname-{uid}:not(.modal-string-ready)) {{
+    visibility: hidden;
+  }}
+  #modal-string-panel-{uid},
+  .jsPanel:has(#displayname-{uid}) {{
+    background:
+      linear-gradient(to bottom, rgba(20, 34, 48, 0.96), rgba(20, 50, 60, 0.96)),
+      radial-gradient(circle at 18% 20%, rgba(20, 255, 208, 0.22), transparent 34%) !important;
+    background-color: #142230 !important;
+  }}
 {_modal_shell_css(f"#displayname-{uid}", padding=28, heading_margin="10px 0 28px", heading_font_size=30, heading_line_height=1.1)}
   #displayname-{uid} {{
     width: 100%;
@@ -174,6 +184,14 @@ async def modal_string(
   function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
   function reveal(root) {{
     root.style.visibility = "visible";
+    root.classList.add("modal-string-ready");
+  }}
+  function markHost(host) {{
+    if (!host) return;
+    if (!host.id) host.id = "modal-string-panel-{uid}";
+    host.classList.add("modal-string-panel");
+    host.dataset.modalKind = "string";
+    host.dataset.modalStringUid = "{uid}";
   }}
   function centerDialog(root) {{
     var host = null;
@@ -192,6 +210,7 @@ async def modal_string(
       reveal(root);
       return;
     }}
+    markHost(host);
     var rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) {{
       reveal(root);
