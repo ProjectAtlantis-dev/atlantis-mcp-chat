@@ -401,9 +401,9 @@ async def _restore_game_default_background_when_background_video_ends() -> None:
 
 
 @public
-async def game_background_video(video: str) -> None:
+async def game_background_video(video_name: str) -> None:
     """Play the named game background video in the terminal."""
-    await term_background_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video}")
+    await term_background_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video_name}")
     await _restore_game_default_background_when_background_video_ends()
 
 
@@ -422,6 +422,18 @@ async def game_default_background() -> None:
     await atlantis.set_background(
         _game_default_background_path(),
         vertical_align=_GAME_DEFAULT_BACKGROUND_ALIGN,
+    )
+
+
+@public
+async def game_win_background() -> None:
+    """Test the Windows 95 forest tile as a repeated terminal background."""
+    await atlantis.set_background(
+        "/Users/reinman/Desktop/Forest2.jpg",
+        vertical_align="top",
+        horizontal_align="left",
+        background_repeat="repeat",
+        background_size="auto",
     )
 
 
