@@ -324,11 +324,6 @@ async def _game_pick(
         return None
     return game_key
 
-@public
-async def get_unused():
-    return atlantis.get_uncalled_dynamic_functions()
-
-
 _GAME_DEFAULT_BACKGROUND_ALIGN = "75%"
 
 
@@ -403,6 +398,7 @@ async def _restore_game_default_background_when_background_video_ends() -> None:
 @public
 async def game_background_video(video_name: str) -> None:
     """Play the named game background video in the terminal."""
+    """timestamp test"""
     await term_background_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video_name}")
     await _restore_game_default_background_when_background_video_ends()
 
@@ -439,6 +435,7 @@ async def game_win_background() -> None:
 
 @public
 async def game_new() -> Dict[str, Any]:
+    """Main entry point for creating a new game"""
     for _ in range(10):
         game_key = uuid.uuid4().hex
         data_dir = game_dir(game_key)
@@ -556,6 +553,7 @@ async def game_password(game_key: str, new_password: str) -> None:
 
 @public
 async def game_join(require_other_owner: bool = False) -> Dict[str, Any]:
+    """Join existing game"""
     from .modal import modal_string
 
     entered_game_key = await modal_string(
@@ -736,7 +734,7 @@ async def game_find_or_create() -> str:
 
 @public
 async def game_init(game_key: str):
-
+    """Idempotent game setup"""
 
     # % atlantis "get_session_key"
 
