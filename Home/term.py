@@ -10,7 +10,7 @@ async def term_background_video(url: str) -> None:
         url,
         vertical_align="center",
         loop=False,
-        muted=True,
+        muted=False,
         autoplay=True,
         plays_inline=True,
         remove_on_ended=True,
