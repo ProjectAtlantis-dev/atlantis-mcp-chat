@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 
 from .bot import bot_entry_location
 from .common import home_path, _read_json, _write_json
-from .term import term_background_video, term_background_video_file
+from .term import term_background_video, term_background_video_file, term_player
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +404,12 @@ async def game_background_video(video_name: str) -> None:
 
 
 @public
+async def game_player(url: str) -> None:
+    """Show a game background player for the URL."""
+    await term_player(url)
+
+
+@public
 async def game_background_video_file(video_path: str) -> None:
     """Play a local game background video file in the terminal."""
     if not os.path.isabs(video_path):
@@ -420,17 +426,6 @@ async def game_default_background() -> None:
         vertical_align=_GAME_DEFAULT_BACKGROUND_ALIGN,
     )
 
-
-@public
-async def game_win_background() -> None:
-    """Test the Windows 95 forest tile as a repeated terminal background."""
-    await atlantis.set_background(
-        "/Users/reinman/Desktop/Forest2.jpg",
-        vertical_align="top",
-        horizontal_align="left",
-        background_repeat="repeat",
-        background_size="auto",
-    )
 
 
 @public
