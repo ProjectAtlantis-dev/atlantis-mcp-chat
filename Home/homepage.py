@@ -1,6 +1,36 @@
 """Homepage for the Home remote."""
 
+from typing import Optional
+
 import atlantis
+
+
+@public
+async def home_menu() -> Optional[str]:
+    """Let the user choose where to go next."""
+    from .modal import modal_menu
+
+    choice = await modal_menu(
+        [
+            {"id": "explore_demo_folder", "text": "Explore demo folder"},
+            {"id": "bots", "text": "To the bots"},
+        ],
+        title="Home",
+        heading="Where do you want to go?",
+        width_ratio=0.5,
+    )
+    if choice is None:
+        return None
+
+    choice_id = str(choice["id"])
+    if choice_id == "explore_demo_folder":
+        commands = [
+            "cd ../..",
+            "cd Demo"
+        ]
+        await atlantis.client_command("/script", {"commands":commands})
+    return choice_id
+
 
 @public
 @homepage
@@ -18,6 +48,8 @@ async def homepage() -> dict:
             f"/path unshift {script_folder}",
             "/terminal on",
             "app on",
-            "game find or create"
+            "term default",
+            "game default background",
+            "home menu"
         ],
     }

@@ -73,7 +73,7 @@ def _game_summary(game_key: str, meta: Dict[str, Any], created_ts: float) -> Dic
         "user_game_id": meta.get("user_game_id"),
         "owner": meta.get("owner"),
         "roster_scene": _game_roster_scene(meta),
-        "participant_count": len(_participant_sids(meta)),
+        "user_cnt": len(_participant_sids(meta)),
         "created": datetime.fromtimestamp(created_ts).isoformat(timespec="seconds"),
         "_ts": created_ts,
     }
@@ -201,7 +201,7 @@ async def game_find_current() -> str:
         raise RuntimeError("No session key in this call context")
 
     matches = []
-    for game in await game_list():
+    for game in _game_rows():
         if str(game.get("user_game_id")) != str(user_game_id):
             continue
 
@@ -282,7 +282,7 @@ async def _game_pick(
     from .modal import modal_menu
 
     if games is None:
-        games = await game_list()
+        games = _game_rows()
     games = sorted(games, key=lambda game: str(game.get("created") or ""), reverse=True)
     if not games:
         raise RuntimeError("No existing games found")
@@ -292,7 +292,7 @@ async def _game_pick(
         game_key = str(game.get("game_key", "")).strip()
         if not game_key:
             continue
-        participant_count = game.get("participant_count")
+        user_cnt = game.get("user_cnt")
         choices.append({
             "id": game_key,
             "text": game_key[:4],
@@ -301,7 +301,7 @@ async def _game_pick(
                 _format_game_menu_age(game.get("created")),
                 str(game.get("owner") or "Unknown owner"),
                 str(game.get("roster_scene") or "No scene"),
-                str(participant_count) if isinstance(participant_count, int) else "-",
+                str(user_cnt) if isinstance(user_cnt, int) else "-",
             ],
             "column_headers": ["Key", "Started", "Owner", "Scene", "Players"],
             "game_key": game_key,
@@ -467,8 +467,7 @@ async def _game_create_and_enter(log_init: bool = False) -> Dict[str, Any]:
     return keys
 
 
-@public
-async def game_list() -> list:
+def _game_rows() -> list:
     """List existing games, newest first"""
     games_root = home_path("Data", "games")
     if not os.path.isdir(games_root):
@@ -488,6 +487,16 @@ async def game_list() -> list:
     for e in entries:
         del e["_ts"]
     return entries
+
+
+@public
+async def game_list() -> list:
+    """List existing games, newest first"""
+    rows = _game_rows()
+    await atlantis.client_data("Games", rows, column_formatter={
+        "created": {"type": "when"},
+    })
+    return rows
 
 
 @public
@@ -652,7 +661,7 @@ async def game_find_or_create() -> str:
     """Ask whether to resume an existing game or create a new one."""
     from .modal import modal_menu
 
-    games = await game_list()
+    games = _game_rows()
     joinable_games = _game_candidates(games, "join")
     resumable_games = _game_candidates(games, "resume")
     choices = [{"id": "create", "text": "Create new game"}]
