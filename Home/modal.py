@@ -39,6 +39,31 @@ def _modal_shell_css(
 """
 
 
+def _modal_panel_css(
+    host_selector: str,
+    shell_selector: str,
+    *,
+    ready_class: str,
+    padding: int,
+    heading_margin: str,
+    heading_font_size: int,
+    heading_line_height: float,
+) -> str:
+    return f"""
+  .jsPanel:has({shell_selector}:not(.{ready_class})) {{
+    visibility: hidden;
+  }}
+  {host_selector},
+  .jsPanel:has({shell_selector}) {{
+    background:
+      linear-gradient(to bottom, rgba(20, 34, 48, 0.96), rgba(20, 50, 60, 0.96)),
+      radial-gradient(circle at 18% 20%, rgba(20, 255, 208, 0.22), transparent 34%) !important;
+    background-color: #142230 !important;
+  }}
+{_modal_shell_css(shell_selector, padding=padding, heading_margin=heading_margin, heading_font_size=heading_font_size, heading_line_height=heading_line_height)}
+"""
+
+
 @public
 @visible
 async def modal_string(
@@ -70,17 +95,15 @@ async def modal_string(
     atlantis.session_shared.set(f"{modal_string_id}:future", future)
     html = f"""
 <style>
-  .jsPanel:has(#displayname-{uid}:not(.modal-string-ready)) {{
-    visibility: hidden;
-  }}
-  #modal-string-panel-{uid},
-  .jsPanel:has(#displayname-{uid}) {{
-    background:
-      linear-gradient(to bottom, rgba(20, 34, 48, 0.96), rgba(20, 50, 60, 0.96)),
-      radial-gradient(circle at 18% 20%, rgba(20, 255, 208, 0.22), transparent 34%) !important;
-    background-color: #142230 !important;
-  }}
-{_modal_shell_css(f"#displayname-{uid}", padding=28, heading_margin="10px 0 28px", heading_font_size=30, heading_line_height=1.1)}
+{_modal_panel_css(
+    f"#modal-string-panel-{uid}",
+    f"#displayname-{uid}",
+    ready_class="modal-string-ready",
+    padding=28,
+    heading_margin="10px 0 28px",
+    heading_font_size=30,
+    heading_line_height=1.1,
+)}
   #displayname-{uid} {{
     width: 100%;
     visibility: hidden;
@@ -368,10 +391,15 @@ async def modal_menu(
     atlantis.session_shared.set(f"{modal_menu_id}:choices", choice_by_id)
     html = f"""
 <style>
-  .jsPanel:has(#modalmenu-{uid}:not(.modal-menu-ready)) {{
-    visibility: hidden;
-  }}
-{_modal_shell_css(f"#modalmenu-{uid}", padding=22, heading_margin="4px 0 16px", heading_font_size=24, heading_line_height=1.15)}
+{_modal_panel_css(
+    f"#modal-menu-panel-{uid}",
+    f"#modalmenu-{uid}",
+    ready_class="modal-menu-ready",
+    padding=22,
+    heading_margin="4px 0 16px",
+    heading_font_size=24,
+    heading_line_height=1.15,
+)}
   #modalmenu-{uid} {{
     width: 100%;
     visibility: hidden;
@@ -459,6 +487,13 @@ async def modal_menu(
   function reveal(root) {{
     root.style.visibility = "visible";
     root.classList.add("modal-menu-ready");
+  }}
+  function markHost(host) {{
+    if (!host) return;
+    if (!host.id) host.id = "modal-menu-panel-{uid}";
+    host.classList.add("modal-menu-panel");
+    host.dataset.modalKind = "menu";
+    host.dataset.modalMenuUid = "{uid}";
   }}
   function px(value) {{
     var number = parseFloat(value);
@@ -557,6 +592,7 @@ async def modal_menu(
       reveal(root);
       return;
     }}
+    markHost(host);
     var rect = host.getBoundingClientRect();
     var rootRect = root.getBoundingClientRect();
     if (!rect.width || !rect.height) {{

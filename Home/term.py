@@ -4,7 +4,7 @@ import atlantis
 import os
 
 @public
-async def term_video(url: str) -> None:
+async def term_background_video(url: str) -> None:
     """Play a terminal background video in the feedback div."""
     await atlantis.set_background_video(
         url,
@@ -52,9 +52,9 @@ def _local_video_path(video_path: str) -> str:
 
 
 @public
-async def term_video_file(video_path: str) -> None:
+async def term_background_video_file(video_path: str) -> None:
     """Play a local terminal background video file."""
-    await term_video(_local_video_path(video_path))
+    await term_background_video(_local_video_path(video_path))
 
 
 @public

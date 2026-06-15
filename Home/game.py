@@ -1,6 +1,10 @@
 """Game state tools"""
 
 import atlantis
+import base64
+import humanize
+import json
+import mimetypes
 import os
 import re
 import uuid
@@ -10,11 +14,11 @@ from urllib.parse import urlencode
 
 from .bot import bot_entry_location
 from .common import home_path, _read_json, _write_json
-from .term import term_video, term_video_file
+from .term import term_background_video, term_background_video_file
 
 
 # ---------------------------------------------------------------------------
-# Game data directory + membership
+# Game record CRUD + membership
 # ---------------------------------------------------------------------------
 
 def _safe_id(value: str, label: str = "id") -> str:
@@ -35,6 +39,44 @@ def require_game_dir(game_key: str) -> str:
     if not os.path.isdir(path):
         raise RuntimeError(f"Invalid game '{game_key}'")
     return path
+
+
+def _game_json_path(game_key: str) -> str:
+    return os.path.join(require_game_dir(game_key), "game.json")
+
+
+def _game_json_path_in_dir(data_dir: str) -> str:
+    return os.path.join(data_dir, "game.json")
+
+
+def _game_read(game_key: str) -> Dict[str, Any]:
+    return _read_json(_game_json_path(game_key)) or {}
+
+
+def _game_read_from_dir(data_dir: str) -> Dict[str, Any]:
+    return _read_json(_game_json_path_in_dir(data_dir)) or {}
+
+
+def _game_create(game_key: str, meta: Dict[str, Any]) -> None:
+    data_dir = game_dir(game_key)
+    os.makedirs(data_dir, exist_ok=False)
+    _write_json(_game_json_path_in_dir(data_dir), meta)
+
+
+def _game_update(game_key: str, meta: Dict[str, Any]) -> None:
+    _write_json(_game_json_path(game_key), meta)
+
+
+def _game_summary(game_key: str, meta: Dict[str, Any], created_ts: float) -> Dict[str, Any]:
+    return {
+        "game_key": game_key,
+        "user_game_id": meta.get("user_game_id"),
+        "owner": meta.get("owner"),
+        "roster_scene": _game_roster_scene(meta),
+        "participant_count": len(_participant_sids(meta)),
+        "created": datetime.fromtimestamp(created_ts).isoformat(timespec="seconds"),
+        "_ts": created_ts,
+    }
 
 
 def _game_roster_scene(meta: Dict[str, Any]) -> Optional[str]:
@@ -77,6 +119,22 @@ def _caller_session_keys(meta: Dict[str, Any], session_key: str) -> list:
     return sorted(session_keys)
 
 
+def _caller_is_member(meta: Dict[str, Any], session_key: str) -> bool:
+    members = meta.get("members") or {}
+    if not isinstance(members, dict):
+        return False
+    if session_key in members:
+        return True
+
+    caller_sid = atlantis.get_caller()
+    if not caller_sid:
+        return False
+    return any(
+        isinstance(rec, dict) and rec.get("sid") == caller_sid
+        for rec in members.values()
+    )
+
+
 def add_caller_membership(members: Dict[str, Any]) -> Dict[str, Any]:
     session_key = atlantis.get_session_key()
     if not session_key:
@@ -98,7 +156,7 @@ def require_membership(game_key: str) -> str:
     session_key = atlantis.get_session_key()
     if not session_key:
         raise RuntimeError("No session key in this call context")
-    meta = _read_json(os.path.join(path, "game.json")) or {}
+    meta = _game_read_from_dir(path)
     members = meta.get("members") or {}
     if session_key not in members:
         raise PermissionError(f"Session is not a member of game '{game_key}'")
@@ -120,7 +178,7 @@ def game_find_latest_owned() -> Optional[str]:
         path = os.path.join(games_root, game_key)
         if not os.path.isdir(path):
             continue
-        meta = _read_json(os.path.join(path, "game.json")) or {}
+        meta = _game_read_from_dir(path)
         if meta.get("owner") != owner:
             continue
         matches.append((os.path.getctime(path), game_key))
@@ -151,8 +209,7 @@ async def game_find_current() -> str:
         if not game_key:
             continue
 
-        data_dir = require_game_dir(game_key)
-        meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+        meta = _game_read(game_key)
         members = meta.get("members") or {}
         if isinstance(members, dict) and session_key in members:
             matches.append(game_key)
@@ -171,15 +228,16 @@ async def game_find_current() -> str:
 
 
 async def _game_resume(game_key: str) -> str:
-    data_dir = require_game_dir(game_key)
-    meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+    meta = _game_read(game_key)
     members = meta.setdefault("members", {})
     session_key = atlantis.get_session_key()
     if not session_key:
         raise RuntimeError("No session key in this call context")
+    if not _caller_is_member(meta, session_key):
+        raise PermissionError(f"Session is not a member of game '{game_key}'")
     if session_key not in members:
         add_caller_membership(members)
-        _write_json(os.path.join(data_dir, "game.json"), meta)
+        _game_update(game_key, meta)
     await atlantis.client_log(f"Existing game found: {game_key}")
     await atlantis.client_command("/cursor join", {"game_key": game_key})
     await game_init(game_key)
@@ -187,8 +245,7 @@ async def _game_resume(game_key: str) -> str:
 
 
 async def _game_redirect_if_user_game_mismatch(game_key: str) -> bool:
-    data_dir = require_game_dir(game_key)
-    meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+    meta = _game_read(game_key)
     target_user_game_id = meta.get("user_game_id")
     if target_user_game_id is None:
         return False
@@ -207,49 +264,26 @@ async def _game_redirect_if_user_game_mismatch(game_key: str) -> bool:
     return True
 
 
-def _format_game_menu_date(value: Any) -> Optional[str]:
+def _format_game_menu_age(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
-        return None
+        return "Unknown"
     try:
         parsed = datetime.fromisoformat(raw)
     except ValueError:
         return raw
-    return parsed.strftime("%b %d, %Y, %H:%M")
+    return humanize.naturaltime(datetime.now() - parsed)
 
 
-def _format_game_menu_text(game: Dict[str, Any]) -> str:
-    parts = []
-    created = _format_game_menu_date(game.get("created"))
-    if created:
-        parts.append(f"Started {created}")
-    if game.get("owner"):
-        parts.append(f"Owner {game['owner']}")
-    if game.get("roster_scene"):
-        parts.append(f"Scene {game['roster_scene']}")
-    participant_count = game.get("participant_count")
-    if isinstance(participant_count, int):
-        noun = "player" if participant_count == 1 else "players"
-        parts.append(f"{participant_count} {noun}")
-    return " | ".join(parts) or "Untitled game"
-
-
-def _format_game_menu_columns(game: Dict[str, Any]) -> list:
-    created = _format_game_menu_date(game.get("created")) or "Unknown date"
-    owner = str(game.get("owner") or "Unknown owner")
-    scene = str(game.get("roster_scene") or "No scene")
-    participant_count = game.get("participant_count")
-    if isinstance(participant_count, int):
-        participants = str(participant_count)
-    else:
-        participants = "-"
-    return [created, owner, scene, participants]
-
-@public
-async def game_choose_existing() -> Optional[str]:
+async def _game_pick(
+    games: Optional[list] = None,
+    heading: str = "Choose a game",
+) -> Optional[str]:
     from .modal import modal_menu
 
-    games = await game_list()
+    if games is None:
+        games = await game_list()
+    games = sorted(games, key=lambda game: str(game.get("created") or ""), reverse=True)
     if not games:
         raise RuntimeError("No existing games found")
 
@@ -258,11 +292,18 @@ async def game_choose_existing() -> Optional[str]:
         game_key = str(game.get("game_key", "")).strip()
         if not game_key:
             continue
+        participant_count = game.get("participant_count")
         choices.append({
             "id": game_key,
-            "text": _format_game_menu_text(game),
-            "columns": _format_game_menu_columns(game),
-            "column_headers": ["Started", "Owner", "Scene", "Players"],
+            "text": game_key[:4],
+            "columns": [
+                game_key[:4],
+                _format_game_menu_age(game.get("created")),
+                str(game.get("owner") or "Unknown owner"),
+                str(game.get("roster_scene") or "No scene"),
+                str(participant_count) if isinstance(participant_count, int) else "-",
+            ],
+            "column_headers": ["Key", "Started", "Owner", "Scene", "Players"],
             "game_key": game_key,
         })
 
@@ -272,7 +313,7 @@ async def game_choose_existing() -> Optional[str]:
     choice = await modal_menu(
         choices,
         title="Game",
-        heading="Choose a game",
+        heading=heading,
     )
     if choice is None:
         return None
@@ -283,40 +324,104 @@ async def game_choose_existing() -> Optional[str]:
         return None
     return game_key
 
+@public
+async def get_unused():
+    return atlantis.get_uncalled_dynamic_functions()
 
+
+_GAME_DEFAULT_BACKGROUND_ALIGN = "75%"
+
+
+def _game_default_background_path() -> str:
+    return os.path.join(os.path.dirname(__file__), "builder.jpg")
+
+
+def _image_data_url(image_path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if not mime_type or not mime_type.startswith("image/"):
+        mime_type = "image/jpeg"
+    with open(image_path, "rb") as image:
+        encoded = base64.b64encode(image.read()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+async def _restore_game_default_background_when_background_video_ends() -> None:
+    background_url = _image_data_url(_game_default_background_path())
+    await atlantis.client_terminal_script(f"""
+(function(){{
+  var backgroundUrl = {json.dumps(background_url)};
+  var verticalAlign = {json.dumps(_GAME_DEFAULT_BACKGROUND_ALIGN)};
+
+  function restoreDefaultBackground() {{
+    var chatFeedback = document.getElementById('chatFeedback');
+    if (!chatFeedback) return;
+
+    var oldMedia = document.querySelectorAll(
+      '#feedbackBgVideo, video[data-background-video="true"], iframe[data-background-player="true"]'
+    );
+    for (var i = 0; i < oldMedia.length; i++) {{
+      try {{
+        if (oldMedia[i].pause) oldMedia[i].pause();
+        oldMedia[i].removeAttribute('src');
+        if (oldMedia[i].load) oldMedia[i].load();
+      }} catch (_err) {{}}
+      oldMedia[i].remove();
+    }}
+
+    chatFeedback.style.background = 'black';
+    chatFeedback.style.backgroundImage = 'url(' + JSON.stringify(backgroundUrl) + ')';
+    chatFeedback.style.backgroundSize = 'cover';
+    chatFeedback.style.backgroundPosition = 'center ' + verticalAlign;
+    chatFeedback.style.backgroundRepeat = 'no-repeat';
+  }}
+
+  function attachBackgroundVideoRestoreHook() {{
+    var backgroundVideos = document.querySelectorAll('video[data-background-video="true"]');
+    var backgroundVideo = backgroundVideos.length ? backgroundVideos[backgroundVideos.length - 1] : null;
+    if (!backgroundVideo) return false;
+    if (backgroundVideo.dataset.gameDefaultRestoreAttached === 'true') return true;
+    backgroundVideo.dataset.gameDefaultRestoreAttached = 'true';
+    backgroundVideo.addEventListener('ended', function() {{
+      setTimeout(restoreDefaultBackground, 0);
+    }}, {{ once: true }});
+    backgroundVideo.addEventListener('error', function() {{
+      setTimeout(restoreDefaultBackground, 0);
+    }}, {{ once: true }});
+    return true;
+  }}
+
+  if (attachBackgroundVideoRestoreHook()) return;
+  var attempts = 0;
+  var timer = setInterval(function() {{
+    attempts += 1;
+    if (attachBackgroundVideoRestoreHook() || attempts >= 300) clearInterval(timer);
+  }}, 100);
+}})();
+""")
 
 
 @public
-async def game_button():
-    keys = await game_new()
-    await atlantis.client_command("/cursor join", keys)
-    await atlantis.client_log(f"game_init game_key: {keys['game_key']!r}")
-    await game_init(keys["game_key"])
-    return keys
-
-
-
-
-@public
-async def game_video(video: str) -> None:
+async def game_background_video(video: str) -> None:
     """Play the named game background video in the terminal."""
-    await term_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video}")
+    await term_background_video(f"https://pub-59cb84bebe804fd1b3257bb6c283a2b3.r2.dev/{video}")
+    await _restore_game_default_background_when_background_video_ends()
 
 
 @public
-async def game_video_file(video_path: str) -> None:
+async def game_background_video_file(video_path: str) -> None:
     """Play a local game background video file in the terminal."""
     if not os.path.isabs(video_path):
         video_path = os.path.join(os.path.dirname(__file__), video_path)
-    await term_video_file(video_path)
+    await term_background_video_file(video_path)
+    await _restore_game_default_background_when_background_video_ends()
 
 
 @public
 async def game_default_background() -> None:
     """Set the game default background image."""
     await atlantis.set_background(
-        os.path.join(os.path.dirname(__file__), "builder.jpg"),
-        vertical_align="75%",
+        _game_default_background_path(),
+        vertical_align=_GAME_DEFAULT_BACKGROUND_ALIGN,
     )
 
 
@@ -330,10 +435,8 @@ async def game_new() -> Dict[str, Any]:
     else:
         raise RuntimeError("Unable to allocate a unique game_key")
 
-    data_dir = game_dir(game_key)
-    os.makedirs(data_dir, exist_ok=False)
     join_password = uuid.uuid4().hex
-    _write_json(os.path.join(data_dir, 'game.json'), {
+    _game_create(game_key, {
         'join_password': join_password,
         'owner': atlantis.get_caller() or None,
         'user_game_id': atlantis.get_user_game_id(),
@@ -351,6 +454,15 @@ async def game_new() -> Dict[str, Any]:
     }
 
 
+async def _game_create_and_enter(log_init: bool = False) -> Dict[str, Any]:
+    keys = await game_new()
+    await atlantis.client_command("/cursor join", keys)
+    if log_init:
+        await atlantis.client_log(f"game_init game_key: {keys['game_key']!r}")
+    await game_init(keys["game_key"])
+    return keys
+
+
 @public
 async def game_list() -> list:
     """List existing games, newest first"""
@@ -366,17 +478,8 @@ async def game_list() -> list:
             ts = os.path.getctime(path)
         except OSError:
             continue
-        meta = _read_json(os.path.join(path, 'game.json')) or {}
-        participant_sids = _participant_sids(meta)
-        entries.append({
-            "game_key": name,
-            "user_game_id": meta.get("user_game_id"),
-            "owner": meta.get("owner"),
-            "roster_scene": _game_roster_scene(meta),
-            "participant_count": len(participant_sids),
-            "created": datetime.fromtimestamp(ts).isoformat(timespec="seconds"),
-            "_ts": ts,
-        })
+        meta = _game_read_from_dir(path)
+        entries.append(_game_summary(name, meta, ts))
     entries.sort(key=lambda e: e["_ts"], reverse=True)
     for e in entries:
         del e["_ts"]
@@ -388,7 +491,7 @@ async def game_show(game_key: str) -> dict:
     """Show a game's status. The owner sees full detail (join password + members);
     everyone else sees only owner, member count, and created time."""
     path = require_game_dir(game_key)
-    meta = _read_json(os.path.join(path, 'game.json')) or {}
+    meta = _game_read(game_key)
     owner = meta.get("owner", "")
     members = meta.get("members") or {}
     created = datetime.fromtimestamp(os.path.getctime(path)).isoformat(timespec="seconds")
@@ -430,18 +533,17 @@ async def game_password(game_key: str, new_password: str) -> None:
     if not new_password:
         raise ValueError("new_password required")
 
-    path = require_game_dir(game_key)
-    meta = _read_json(os.path.join(path, 'game.json')) or {}
+    meta = _game_read(game_key)
     if atlantis.get_caller() != meta.get("owner", ""):
         raise PermissionError("Only the owner may change the password")
 
     meta['join_password'] = new_password
-    _write_json(os.path.join(path, 'game.json'), meta)
+    _game_update(game_key, meta)
     await atlantis.client_log(f"Password to game {game_key} was changed")
 
 
 @public
-async def game_join() -> Dict[str, Any]:
+async def game_join(require_other_owner: bool = False) -> Dict[str, Any]:
     from .modal import modal_string
 
     entered_game_key = await modal_string(
@@ -458,10 +560,20 @@ async def game_join() -> Dict[str, Any]:
     if not game_key:
         raise ValueError("game_key required")
 
-    data_dir = require_game_dir(game_key)
-    meta = _read_json(os.path.join(data_dir, 'game.json')) or {}
-    if atlantis.get_caller() == meta.get("owner", ""):
-        return await _game_join_authorized(game_key, data_dir, meta)
+    meta = _game_read(game_key)
+    if require_other_owner and atlantis.get_caller() == meta.get("owner", ""):
+        raise PermissionError("Join game requires a game owned by someone else")
+    return await _game_join_or_prompt(game_key, meta)
+
+
+async def _game_join_or_prompt(game_key: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+    from .modal import modal_string
+
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+    if _caller_is_member(meta, session_key) or atlantis.get_caller() == meta.get("owner", ""):
+        return await _game_join_authorized(game_key, meta)
 
     password = await modal_string(
         f"Enter game password:",
@@ -478,10 +590,33 @@ async def game_join() -> Dict[str, Any]:
     if meta.get('join_password') != password:
         raise ValueError(f"Incorrect password for game {game_key}")
 
-    return await _game_join_authorized(game_key, data_dir, meta)
+    return await _game_join_authorized(game_key, meta)
 
 
-async def _game_join_authorized(game_key: str, data_dir: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+def _game_candidates(games: list, action: str) -> list:
+    if action not in {"join", "resume"}:
+        raise ValueError(f"Unknown game candidate action: {action!r}")
+
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+    caller = atlantis.get_caller()
+    candidates = []
+    for game in games:
+        game_key = str(game.get("game_key") or "").strip()
+        if not game_key:
+            continue
+        meta = _game_read(game_key)
+        is_member = _caller_is_member(meta, session_key)
+        is_owner = bool(caller and meta.get("owner") == caller)
+        if action == "join" and not is_member and not is_owner:
+            candidates.append(game)
+        elif action == "resume" and is_member:
+            candidates.append(game)
+    return candidates
+
+
+async def _game_join_authorized(game_key: str, meta: Dict[str, Any]) -> Dict[str, Any]:
     members = meta.setdefault('members', {})
     session_key = atlantis.get_session_key()
     if not session_key:
@@ -489,7 +624,7 @@ async def _game_join_authorized(game_key: str, data_dir: str, meta: Dict[str, An
     already_member = session_key in members
     if not already_member:
         add_caller_membership(members)
-    _write_json(os.path.join(data_dir, 'game.json'), meta)
+    _game_update(game_key, meta)
     if already_member:
         await atlantis.client_log(f"user already in game: {game_key}")
         return {"game_key": game_key}
@@ -512,18 +647,17 @@ async def game_find_or_create() -> str:
     """Ask whether to resume an existing game or create a new one."""
     from .modal import modal_menu
 
-    if not await game_list():
-        keys = await game_new()
-        game_key = keys["game_key"]
-        await atlantis.client_command("/cursor join", keys)
-        await game_init(game_key)
-        return game_key
+    games = await game_list()
+    joinable_games = _game_candidates(games, "join")
+    resumable_games = _game_candidates(games, "resume")
+    choices = [{"id": "create", "text": "Create new game"}]
+    if joinable_games:
+        choices.append({"id": "join", "text": "Join game"})
+    if resumable_games:
+        choices.append({"id": "resume", "text": "Resume existing game"})
 
     choice = await modal_menu(
-        [
-            {"id": "resume", "text": "Resume existing game"},
-            {"id": "create", "text": "Create new game"},
-        ],
+        choices,
         title="Game",
         heading="What do you want to do?",
         width_ratio=0.5,
@@ -531,17 +665,32 @@ async def game_find_or_create() -> str:
     if choice is None:
         raise RuntimeError("Game selection cancelled")
 
+    if choice.get("id") == "create":
+        return (await _game_create_and_enter())["game_key"]
+
+    if choice.get("id") == "join":
+        game_key = await _game_pick(
+            games=joinable_games,
+            heading="Choose a game to join",
+        )
+        if not game_key:
+            raise RuntimeError("Game selection cancelled")
+        meta = _game_read(game_key)
+        result = await _game_join_or_prompt(game_key, meta)
+        if result.get("cancelled"):
+            raise RuntimeError("Game selection cancelled")
+        game_key = str(result.get("game_key") or "").strip()
+        if not game_key:
+            raise RuntimeError("Game join did not return a game_key")
+        return game_key
+
     if choice.get("id") == "resume":
-        game_key = await game_choose_existing()
+        game_key = await _game_pick(games=resumable_games, heading="Choose a game to resume")
         if not game_key:
             raise RuntimeError("Game selection cancelled")
         return await _game_resume(game_key)
 
-    keys = await game_new()
-    game_key = keys["game_key"]
-    await atlantis.client_command("/cursor join", keys)
-    await game_init(game_key)
-    return game_key
+    raise ValueError(f"Unknown game choice: {choice.get('id')!r}")
 
 # % ls
 
@@ -631,7 +780,7 @@ async def game_init(game_key: str):
     if bound_row and not bound_row.get("cancelled"):
         from .camera import _camera_follow_slot
 
-        meta = _read_json(os.path.join(data_dir, "game.json")) or {}
+        meta = _game_read_from_dir(data_dir)
         await _camera_follow_slot(
             game_key,
             bound_row["key"],
