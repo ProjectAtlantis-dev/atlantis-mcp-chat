@@ -191,10 +191,6 @@ async def prompt_assemble(bot_sid: str, roster_names: Optional[Dict[str, str]] =
     return render_bot_prompt(bot_sid, roster_names)
 
 
-@public
-async def prompt_aassemble(bot_sid: str, roster_names: Optional[Dict[str, str]] = None) -> str:
-    """Backward-compatible typo alias for prompt_assemble."""
-    return await prompt_assemble(bot_sid, roster_names)
 
 
 def bot_default_location(bot_sid: str) -> Optional[str]:
