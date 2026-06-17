@@ -21,7 +21,7 @@ async def term_background_video(url: str) -> None:
 @public
 async def term_player(
     url: str,
-    muted: bool = True,
+    muted: bool = False,
     autoplay: bool = True,
     controls: bool = False,
     loop: bool = False,

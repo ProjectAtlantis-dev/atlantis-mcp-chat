@@ -419,7 +419,7 @@ async def game_background_video_file(video_path: str) -> None:
 
 
 @public
-async def game_default_background() -> None:
+async def game_background_default() -> None:
     """Set the game default background image."""
     await atlantis.set_background(
         _game_default_background_path(),
@@ -450,7 +450,7 @@ async def game_new() -> Dict[str, Any]:
     })
 
     await atlantis.client_log(f"Game created: {game_key}")
-    await game_default_background()
+    await game_background_default()
 
     return {
         "game_key": game_key,
