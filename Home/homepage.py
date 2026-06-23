@@ -7,7 +7,7 @@ import atlantis
 
 
 @public
-async def home_menu():
+async def first_menu():
     """Let the user choose where to go next."""
     from .modal import modal_menu
 
@@ -37,7 +37,7 @@ async def home_menu():
         img_path = Path(__file__).absolute().parents[4] / "sitting_coffee.png"
         await atlantis.client_image(
             str(img_path),
-            content="Demo folder coming right up...",
+            content="Demo folder coming right up, but if you want to do anything cool you need to mount a filesystem...",
             max_width="25vw",
         )
 
@@ -61,8 +61,8 @@ async def homepage() -> dict:
             f"/path unshift {script_folder}",
             "/terminal on",
             "app on",
-            "term default",
-            "game background default",
-            "home menu"
+            "term_default",
+            "game_background_default",
+            "first_menu"
         ],
     }

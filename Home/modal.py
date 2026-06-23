@@ -404,6 +404,21 @@ async def modal_menu(
     width: 100%;
     visibility: hidden;
   }}
+  /* Layout contract:
+     - This CSS is only a fallback for Atlantis/jsPanel wrappers that start at
+       browser width. It may constrain horizontal size and left edge.
+     - Do not set top, height, overflow, or vertical transforms here. The script
+       below measures the actual rendered panel and clamps vertical placement.
+  */
+  .jsPanel:has(#modalmenu-{uid}) {{
+    --modal-menu-width: min(calc(100vw - 32px), max(320px, calc(100vw * {width_ratio})));
+    width: var(--modal-menu-width) !important;
+    max-width: calc(100vw - 32px) !important;
+    left: calc((100vw - var(--modal-menu-width)) / 2) !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+  }}
   #modalmenu-{uid} .menu-list {{
     display: grid;
     gap: 8px;
@@ -617,6 +632,16 @@ async def modal_menu(
     host.style.bottom = "auto";
     host.style.transform = "translate(-50%, -50%)";
     host.style.margin = "0";
+    // Keep vertical geometry measured here. CSS cannot know the final panel
+    // height after menu content, jsPanel chrome, and dynamic grid columns settle.
+    // The 16px viewport margin mirrors the horizontal max-width margin above.
+    var adjustedRect = host.getBoundingClientRect();
+    var viewportMargin = 16;
+    var centeredTop = Math.round((window.innerHeight - adjustedRect.height) / 2);
+    var maxTop = Math.max(viewportMargin, window.innerHeight - adjustedRect.height - viewportMargin);
+    var clampedTop = Math.min(Math.max(viewportMargin, centeredTop), maxTop);
+    host.style.top = clampedTop + "px";
+    host.style.transform = "translateX(-50%)";
     if (shouldReveal) reveal(root);
   }}
   function scheduleCenter(root) {{
