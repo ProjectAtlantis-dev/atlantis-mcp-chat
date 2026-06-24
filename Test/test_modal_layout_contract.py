@@ -32,8 +32,12 @@ class ModalLayoutContractTest(unittest.TestCase):
         rule = _menu_panel_css_rule(_modal_source())
 
         self.assertIn("width:", rule)
+        self.assertIn("width: auto !important", rule)
+        self.assertIn("min-width: 0 !important", rule)
         self.assertIn("left:", rule)
-        self.assertIn("transform: none", rule)
+        self.assertIn("transform: translateX(-50%)", rule)
+        self.assertNotIn("--modal-menu-width", rule)
+        self.assertNotIn("100vw *", rule)
         self.assertNotIn("top:", rule)
         self.assertNotIn("height:", rule)
         self.assertNotIn("overflow:", rule)
@@ -50,6 +54,17 @@ class ModalLayoutContractTest(unittest.TestCase):
 
         self.assertNotIn('closest(".jsPanel")', source)
         self.assertNotIn("closest('.jsPanel')", source)
+
+    def test_menu_width_is_driven_by_choice_text_measurements(self) -> None:
+        source = _modal_source().split("async def modal_menu(", 1)[1]
+
+        self.assertIn("var needed = 0;", source)
+        self.assertIn(": textWidth(button) + horizontalBox(buttonStyle);", source)
+        self.assertIn('host.style.minWidth = "0";', source)
+        self.assertIn("var finalWidth = Math.min(targetWidth, viewportMax);", source)
+        self.assertNotIn("var needed = 320;", source)
+        self.assertNotIn("Math.max(320, targetWidth)", source)
+        self.assertNotIn("originalWidth *", source)
 
 
 if __name__ == "__main__":

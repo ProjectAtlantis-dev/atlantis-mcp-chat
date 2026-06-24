@@ -366,8 +366,6 @@ async def modal_menu(
     uid = uuid.uuid4().hex[:8]
     modal_menu_id = f"modal_menu:{uid}"
     modal_menu_id_js = json.dumps(modal_menu_id)
-    width_ratio = max(0.25, min(1.0, float(width_ratio or 0.67)))
-    width_ratio_js = json.dumps(width_ratio)
     heading_block = f"<h2>{html_lib.escape(heading)}</h2>" if heading else ""
     table_headers = None
     for choice in choices:
@@ -402,6 +400,7 @@ async def modal_menu(
 )}
   #modalmenu-{uid} {{
     width: 100%;
+    min-width: 0;
     visibility: hidden;
   }}
   /* Layout contract:
@@ -411,13 +410,13 @@ async def modal_menu(
        below measures the actual rendered panel and clamps vertical placement.
   */
   .jsPanel:has(#modalmenu-{uid}) {{
-    --modal-menu-width: min(calc(100vw - 32px), max(320px, calc(100vw * {width_ratio})));
-    width: var(--modal-menu-width) !important;
+    width: auto !important;
+    min-width: 0 !important;
     max-width: calc(100vw - 32px) !important;
-    left: calc((100vw - var(--modal-menu-width)) / 2) !important;
+    left: 50% !important;
     right: auto !important;
     bottom: auto !important;
-    transform: none !important;
+    transform: translateX(-50%) !important;
   }}
   #modalmenu-{uid} .menu-list {{
     display: grid;
@@ -571,11 +570,7 @@ async def modal_menu(
     var columnWidths = collectGridWidths(root);
     var gap = gridGap(root);
     var fullGridWidth = gridWidth(columnWidths, gap);
-    var needed = 320;
-    var heading = root.querySelector("h2");
-    if (heading) {{
-      needed = Math.max(needed, Math.max(Math.ceil(heading.scrollWidth), textWidth(heading)) + rootBox);
-    }}
+    var needed = 0;
     var header = root.querySelector(".menu-header");
     if (header) {{
       needed = Math.max(needed, (fullGridWidth || elementGridWidth(header)) + horizontalBox(window.getComputedStyle(header)) + rootBox);
@@ -585,7 +580,7 @@ async def modal_menu(
       var grid = button.querySelector(".menu-choice-grid");
       var buttonWidth = grid
         ? (fullGridWidth || elementGridWidth(grid)) + horizontalBox(buttonStyle)
-        : Math.max(Math.ceil(button.scrollWidth) + horizontalBorder(buttonStyle), textWidth(button) + horizontalBox(buttonStyle));
+        : textWidth(button) + horizontalBox(buttonStyle);
       needed = Math.max(needed, buttonWidth + rootBox);
     }});
     return {{ width: needed, columns: columnWidths }};
@@ -608,21 +603,18 @@ async def modal_menu(
       return;
     }}
     markHost(host);
+    host.style.minWidth = "0";
     var rect = host.getBoundingClientRect();
     var rootRect = root.getBoundingClientRect();
     if (!rect.width || !rect.height) {{
       if (shouldReveal) reveal(root);
       return;
     }}
-    if (!host.dataset.modalMenuOriginalWidth) {{
-      host.dataset.modalMenuOriginalWidth = String(rect.width);
-    }}
-    var originalWidth = Number(host.dataset.modalMenuOriginalWidth) || rect.width;
     var metrics = menuMetrics(root);
     var hostExtraWidth = Math.max(0, Math.ceil(rect.width - rootRect.width));
-    var targetWidth = Math.max(Math.round(originalWidth * {width_ratio_js}), metrics.width + hostExtraWidth + 24);
-    var viewportMax = Math.max(320, window.innerWidth - 32);
-    var finalWidth = Math.min(Math.max(320, targetWidth), viewportMax);
+    var targetWidth = Math.ceil(metrics.width + hostExtraWidth + 24);
+    var viewportMax = Math.max(0, window.innerWidth - 32);
+    var finalWidth = Math.min(targetWidth, viewportMax);
     applyGridWidths(root, metrics.columns, finalWidth - hostExtraWidth >= metrics.width);
     host.style.width = finalWidth + "px";
     host.style.maxWidth = "calc(100vw - 32px)";
