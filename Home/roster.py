@@ -196,7 +196,7 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
         raise RuntimeError(f"Slot {slot_key!r} is already bound")
 
     display_name = await modal_string(
-        "What name should people call you?",
+        f"What name should people call {slot_key}?",
         title="Roster",
         submit_label="Join",
     )

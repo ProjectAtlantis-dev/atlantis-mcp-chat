@@ -324,6 +324,42 @@ async def _game_pick(
         return None
     return game_key
 
+
+async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
+    from .modal import modal_menu
+
+    await atlantis.client_log("Getting scenes")
+    scenes = await atlantis.client_command("@scene_list")
+    if not scenes:
+        raise RuntimeError("No scenes found")
+
+    choices = []
+    for scene in scenes:
+        scene_name = str(scene or "").strip()
+        if not scene_name:
+            continue
+        choices.append({
+            "id": scene_name,
+            "text": scene_name,
+            "scene": scene_name,
+        })
+
+    if not choices:
+        raise RuntimeError("No scenes found")
+
+    choice = await modal_menu(
+        choices,
+        title="Scene",
+        heading=heading,
+        width_ratio=0.5,
+    )
+    if choice is None:
+        return None
+
+    scene = str(choice.get("scene") or choice.get("id") or "").strip()
+    return scene or None
+
+
 _GAME_DEFAULT_BACKGROUND_ALIGN = "75%"
 
 
@@ -664,7 +700,7 @@ async def game_find_or_create() -> str:
     games = _game_rows()
     joinable_games = _game_candidates(games, "join")
     resumable_games = _game_candidates(games, "resume")
-    choices = [{"id": "create", "text": "Create new game"}]
+    choices: list[Dict[str, Any]] = [{"id": "create", "text": "Create new game"}]
     if resumable_games:
         choices.append({"id": "resume", "text": "Resume existing game"})
     choices.append({
@@ -770,11 +806,9 @@ async def game_init(game_key: str):
     if os.path.isfile(roster_path):
         roster = await atlantis.client_command("@roster_list")
     else:
-        await atlantis.client_log(f"Getting scenes")
-        scenes = await atlantis.client_command("@scene_list")
-        if not scenes:
-            raise RuntimeError("No scenes found")
-        scene = scenes[0]
+        scene = await _game_pick_scene()
+        if not scene:
+            raise RuntimeError("Scene selection cancelled")
         roster = await atlantis.client_command(f"@roster_create {scene}")
         await atlantis.client_log(f"game scene: {scene!r}")
 
