@@ -665,14 +665,17 @@ async def game_find_or_create() -> str:
     joinable_games = _game_candidates(games, "join")
     resumable_games = _game_candidates(games, "resume")
     choices = [{"id": "create", "text": "Create new game"}]
-    if joinable_games:
-        choices.append({"id": "join", "text": "Join game"})
     if resumable_games:
         choices.append({"id": "resume", "text": "Resume existing game"})
+    choices.append({
+        "id": "join",
+        "text": "Join game",
+        "disabled": not joinable_games,
+    })
 
     choice = await modal_menu(
         choices,
-        title="Game",
+        title="Game Action",
         heading="What do you want to do?",
         width_ratio=0.5,
     )

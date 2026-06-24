@@ -66,6 +66,14 @@ class ModalLayoutContractTest(unittest.TestCase):
         self.assertNotIn("Math.max(320, targetWidth)", source)
         self.assertNotIn("originalWidth *", source)
 
+    def test_menu_supports_disabled_choices(self) -> None:
+        source = _modal_source().split("async def modal_menu(", 1)[1]
+
+        self.assertIn("disabled_attr =", source)
+        self.assertIn("aria-disabled=", source)
+        self.assertIn("var enabledButtons = buttons.filter", source)
+        self.assertIn("if (button.disabled) return;", source)
+
 
 if __name__ == "__main__":
     unittest.main()

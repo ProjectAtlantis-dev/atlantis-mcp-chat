@@ -197,7 +197,7 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
 
     display_name = await modal_string(
         "What name should people call you?",
-        title="Game",
+        title="Roster",
         submit_label="Join",
     )
     if display_name is None:

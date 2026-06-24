@@ -345,6 +345,7 @@ async def modal_menu(
         if choice_id in choice_by_id:
             raise ValueError(f"duplicate choice id: {choice_id!r}")
         choice_by_id[choice_id] = choice
+        disabled_attr = " disabled aria-disabled=\"true\"" if choice.get("disabled") else ""
         columns = choice.get("columns")
         if isinstance(columns, list) and columns:
             button_content = (
@@ -359,7 +360,7 @@ async def modal_menu(
             button_content = html_lib.escape(choice_text)
         choice_buttons.append(
             '<button type="button" class="menu-choice" role="menuitem" '
-            f'data-choice-id="{html_lib.escape(choice_id, quote=True)}">'
+            f'data-choice-id="{html_lib.escape(choice_id, quote=True)}"{disabled_attr}>'
             f"{button_content}</button>"
         )
 
@@ -477,8 +478,11 @@ async def modal_menu(
     outline: none;
   }}
   #modalmenu-{uid} .menu-choice:disabled {{
+    color: rgba(255, 250, 240, 0.36);
+    background: rgba(7, 15, 22, 0.28);
+    border-color: rgba(255, 250, 240, 0.14);
     cursor: default;
-    opacity: 0.65;
+    opacity: 0.55;
   }}
 </style>
 <section id="modalmenu-{uid}" aria-label="Menu">
@@ -658,12 +662,14 @@ async def modal_menu(
     var root = document.getElementById("modalmenu-{uid}");
     if (!root) return;
     var buttons = Array.prototype.slice.call(root.querySelectorAll(".menu-choice"));
-    if (!buttons.length) return;
+    var enabledButtons = buttons.filter(function(button) {{ return !button.disabled; }});
+    if (!buttons.length || !enabledButtons.length) return;
     scheduleCenter(root);
-    buttons[0].focus({{ preventScroll: true }});
+    enabledButtons[0].focus({{ preventScroll: true }});
     buttons.forEach(function(button) {{
       button.addEventListener("click", async function() {{
         if (settled) return;
+        if (button.disabled) return;
         if (!window._accessToken) return;
         var choiceId = button.getAttribute("data-choice-id") || "";
         buttons.forEach(function(btn) {{ btn.disabled = true; }});
@@ -675,13 +681,14 @@ async def modal_menu(
         }}, {exec_shell_js});
       }});
       button.addEventListener("keydown", function(event) {{
-        var index = buttons.indexOf(button);
+        if (button.disabled) return;
+        var index = enabledButtons.indexOf(button);
         if (event.key === "ArrowDown") {{
           event.preventDefault();
-          buttons[(index + 1) % buttons.length].focus({{ preventScroll: true }});
+          enabledButtons[(index + 1) % enabledButtons.length].focus({{ preventScroll: true }});
         }} else if (event.key === "ArrowUp") {{
           event.preventDefault();
-          buttons[(index + buttons.length - 1) % buttons.length].focus({{ preventScroll: true }});
+          enabledButtons[(index + enabledButtons.length - 1) % enabledButtons.length].focus({{ preventScroll: true }});
         }} else if (event.key === "Enter" || event.key === " ") {{
           event.preventDefault();
           button.click();
