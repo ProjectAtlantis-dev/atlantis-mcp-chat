@@ -1,15 +1,16 @@
 """Homepage for the Home remote."""
 
 from pathlib import Path
-from typing import Optional
 
 import atlantis
+
+from .game import game_find_or_create
+from .modal import modal_menu
 
 
 @public
 async def first_menu():
     """Let the user choose where to go next."""
-    from .modal import modal_menu
 
     choice = await modal_menu(
         [
@@ -42,6 +43,9 @@ async def first_menu():
         )
 
         await atlantis.client_command("/script", {"commands":["ls"]})
+
+    if choice_id == "bots":
+        return await game_find_or_create()
 
 
 
