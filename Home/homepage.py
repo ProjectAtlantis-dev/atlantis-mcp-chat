@@ -7,6 +7,9 @@ import atlantis
 from .game import game_find_or_create
 from .modal import modal_menu
 
+# % first_menu
+
+
 
 @public
 async def first_menu():

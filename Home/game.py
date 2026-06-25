@@ -518,6 +518,8 @@ async def game_new() -> Dict[str, Any]:
     else:
         raise RuntimeError("Unable to allocate a unique game_key")
 
+    await atlantis.client_log("Creating new game")
+
     join_password = uuid.uuid4().hex
     _game_create(game_key, {
         'join_password': join_password,
@@ -546,6 +548,7 @@ async def _game_create_and_enter(log_init: bool = False) -> Dict[str, Any]:
     return keys
 
 
+@visible
 def _game_rows() -> list:
     """List existing games, newest first"""
     games_root = home_path("Data", "games")
@@ -728,8 +731,13 @@ async def _game_join_authorized(game_key: str, meta: Dict[str, Any]) -> Dict[str
 
 
 
+# % game_find_or_create
 
+# % _game_rows()
 
+# % game show
+
+# % game overview
 
 @public
 async def game_find_or_create() -> str:
@@ -816,6 +824,9 @@ async def game_find_or_create() -> str:
 
 @public
 async def game_init(game_key: str):
+
+    await atlantis.client_log("*** GAME INIT ***")
+
     """Idempotent game setup"""
 
     # % atlantis "get_session_key"
