@@ -1,5 +1,6 @@
 """Tool format conversion — Atlantis search results to OpenAI function-calling format."""
 
+import ast
 import json
 import logging
 import re
@@ -197,7 +198,6 @@ def _repair_json(raw: str) -> Optional[Dict[str, Any]]:
         pass
 
     try:
-        import ast
         result = ast.literal_eval(raw.strip())
         if isinstance(result, dict):
             return result

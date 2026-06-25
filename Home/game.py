@@ -360,6 +360,54 @@ async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
     return scene or None
 
 
+async def _game_pick_roster_slot(
+    heading: str = "Choose a roster slot",
+) -> Optional[str]:
+    from .modal import modal_menu
+
+    roster = await atlantis.client_command("@roster_list")
+    choices = []
+    for row in roster:
+        slot_key = str(row.get("key") or "").strip()
+        if not slot_key:
+            continue
+        session_key = str(row.get("session_key") or "").strip()
+        sid = str(row.get("sid") or "").strip()
+        is_bound = bool(session_key)
+        display_name = str(row.get("displayName") or "").strip()
+        status = "Taken" if is_bound else "Open"
+        choices.append({
+            "id": slot_key,
+            "text": slot_key,
+            "columns": [
+                slot_key,
+                str(row.get("bot_sid") or ""),
+                display_name or "-",
+                sid or status,
+            ],
+            "column_headers": ["Slot", "Default", "Name", "Status"],
+            "slot_key": slot_key,
+            "disabled": is_bound,
+        })
+
+    if not choices:
+        raise RuntimeError("No roster slots found")
+    if not any(not choice.get("disabled") for choice in choices):
+        return None
+
+    choice = await modal_menu(
+        choices,
+        title="Roster",
+        heading=heading,
+        width_ratio=0.67,
+    )
+    if choice is None:
+        return None
+
+    slot_key = str(choice.get("slot_key") or choice.get("id") or "").strip()
+    return slot_key or None
+
+
 _GAME_DEFAULT_BACKGROUND_ALIGN = "75%"
 
 
@@ -718,6 +766,8 @@ async def game_find_or_create() -> str:
     if choice is None:
         raise RuntimeError("Game selection cancelled")
 
+    await atlantis.client_log(f"game_find_or_create selected: {choice.get('id')!r}")
+
     if choice.get("id") == "create":
         return (await _game_create_and_enter())["game_key"]
 
@@ -824,7 +874,10 @@ async def game_init(game_key: str):
         )
     open_slots = [row for row in roster if not row.get("session_key")]
     if bound_row is None and open_slots:
-        bound_row = await atlantis.client_command(f"@roster_bind {open_slots[0]['key']}")
+        slot_key = await _game_pick_roster_slot()
+        if not slot_key:
+            raise RuntimeError("Roster slot selection cancelled")
+        bound_row = await atlantis.client_command(f"@roster_bind {slot_key}")
     if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
         location = bot_entry_location(bound_row["bot_sid"])
         await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")

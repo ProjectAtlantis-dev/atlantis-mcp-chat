@@ -4,17 +4,16 @@ import os
 import uuid
 
 from .bot import _bot_rows
+from .camera import _camera_rows
 from .common import _read_json
 from .game import _game_roster_scene, require_membership
 from .location import _location_rows
+from .roster import _display_roster_rows, _load_game_roster
+from .scene import _scene_rows
 
 
 @visible
 async def game_overview(game_key: str) -> None:
-    from .camera import _camera_rows
-    from .roster import _display_roster_rows, _load_game_roster
-    from .scene import _scene_rows
-
     data_dir = require_membership(game_key)
 
     meta = _read_json(os.path.join(data_dir, "game.json")) or {}

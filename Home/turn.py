@@ -6,6 +6,7 @@ import time as _t
 from openai import OpenAI
 from typing import List, Dict, Any, Optional, cast
 
+from .bot import bot_roster_name, load_bot, render_bot_prompt
 from .tool import (
     logger,
     AtlantisSearchToolT, OpenAITool, ToolLookupInfo,
@@ -63,8 +64,6 @@ async def run_turn(
     tools: Optional[List[AtlantisSearchToolT]] = None,
 ) -> Optional[str]:
     """Run a streaming tool-calling turn. Loads bot config from bot_sid."""
-    from .bot import bot_roster_name, load_bot, render_bot_prompt
-
     cfg = load_bot(bot_sid)
     if system_prompt is None:
         system_prompt = render_bot_prompt(bot_sid, roster_names)
