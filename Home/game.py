@@ -807,20 +807,8 @@ async def game_find_or_create() -> str:
 
 # % term glass
 
+# %  clear
 
-# % ls atl*
-
-# % atlantis "get_session_key"
-
-# % atlantis "get_caller"
-
-# % atlantis "get_user_game_id"
-
-# % atlantis "get_caller_shell_path"
-
-# % cat atlantis
-
-# % cursor show
 
 @public
 async def game_init(game_key: str):
