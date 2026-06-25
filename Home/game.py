@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 
 from .bot import bot_entry_location
 from .common import home_path, _read_json, _write_json
+from .modal import modal_menu, modal_string
 from .term import term_background_video, term_background_video_file, term_player
 
 
@@ -279,8 +280,6 @@ async def _game_pick(
     games: Optional[list] = None,
     heading: str = "Choose a game",
 ) -> Optional[str]:
-    from .modal import modal_menu
-
     if games is None:
         games = _game_rows()
     games = sorted(games, key=lambda game: str(game.get("created") or ""), reverse=True)
@@ -326,8 +325,6 @@ async def _game_pick(
 
 
 async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
-    from .modal import modal_menu
-
     await atlantis.client_log("Getting scenes")
     scenes = await atlantis.client_command("@scene_list")
     if not scenes:
@@ -363,8 +360,6 @@ async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
 async def _game_pick_roster_slot(
     heading: str = "Choose a roster slot",
 ) -> Optional[str]:
-    from .modal import modal_menu
-
     roster = await atlantis.client_command("@roster_list")
     choices = []
     for row in roster:
@@ -642,8 +637,6 @@ async def game_password(game_key: str, new_password: str) -> None:
 @public
 async def game_join(require_other_owner: bool = False) -> Dict[str, Any]:
     """Join existing game"""
-    from .modal import modal_string
-
     entered_game_key = await modal_string(
         "Enter game key:",
         submit_label="Next",
@@ -665,8 +658,6 @@ async def game_join(require_other_owner: bool = False) -> Dict[str, Any]:
 
 
 async def _game_join_or_prompt(game_key: str, meta: Dict[str, Any]) -> Dict[str, Any]:
-    from .modal import modal_string
-
     session_key = atlantis.get_session_key()
     if not session_key:
         raise RuntimeError("No session key in this call context")
@@ -743,8 +734,6 @@ async def _game_join_authorized(game_key: str, meta: Dict[str, Any]) -> Dict[str
 @public
 async def game_find_or_create() -> str:
     """Ask whether to resume an existing game or create a new one."""
-    from .modal import modal_menu
-
     games = _game_rows()
     joinable_games = _game_candidates(games, "join")
     resumable_games = _game_candidates(games, "resume")

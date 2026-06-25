@@ -14,8 +14,9 @@ async def first_menu():
 
     choice = await modal_menu(
         [
-            {"id": "explore_demo_folder", "text": "Explore demo folder"},
             {"id": "bots", "text": "To the bots"},
+            {"id": "explore_demo_folder", "text": "Explore demo folder"},
+
         ],
         title="Home",
         heading="Where do you want to go?",
@@ -42,6 +43,8 @@ async def first_menu():
             max_width="25vw",
         )
 
+        # we use script to call 'ls' instead of doing it directly so it will list what is in the Demo folder
+        # otherwise it will just list what is in the Home folder
         await atlantis.client_command("/script", {"commands":["ls"]})
 
     if choice_id == "bots":

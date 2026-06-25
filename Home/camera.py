@@ -26,6 +26,7 @@ from .location import (
     _require_leaf,
     location_image_path,
 )
+from .roster import _load_game_roster
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +60,6 @@ def _location_default_camera_align(location: str) -> str:
 
 
 def _slot_location(game_key: str, slot_key: str) -> Optional[str]:
-    from .roster import _load_game_roster
-
     slot_key = str(slot_key or "").strip()
     if not slot_key:
         raise ValueError("slot_key required")

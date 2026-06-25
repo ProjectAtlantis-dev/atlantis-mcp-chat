@@ -10,7 +10,7 @@ from .common import _read_json, _write_json
 from .game import require_membership
 from .location import _connects_to, _require_leaf, load_location
 from .modal import modal_string
-from .scene import _load_scene, _scene_name
+from .scene import _load_scene, _scene_name, _scene_names
 
 
 def _number_duplicate_display_names(rows: List[Dict[str, Any]]) -> None:
@@ -111,7 +111,6 @@ def _write_game_roster(game_key: str, rows: List[Dict[str, Any]]) -> None:
 def _roster_rows() -> List[Dict[str, Any]]:
     """Pure data: scene roster definitions. No client side effects."""
     rows: List[Dict[str, Any]] = []
-    from .scene import _scene_names
 
     for scene_name in _scene_names():
         for row in _scene_roster_rows(scene_name):
