@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 
 from .bot import bot_entry_location, bot_roster_name
 from .camera import _camera_follow_slot
-from .modal import _modal_panel_css, modal_menu
+from .modal import _modal_panel_css, modal_menu, modal_string
 from .game import (
     GAME_STATE_STOPPED,
     _caller_is_member,
@@ -233,7 +233,7 @@ async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Opti
     <thead>
       <tr>
         <th scope="col">Slot</th>
-        <th scope="col">Default</th>
+        <th scope="col">SID</th>
         <th scope="col">State</th>
         <th scope="col">Name</th>
       </tr>

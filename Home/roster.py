@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .bot import load_bot
+from .bot import bot_roster_name, load_bot
 from .common import _read_json, _write_json
 from .game import require_membership
 from .location import _connects_to, _require_leaf, load_location
@@ -120,12 +120,30 @@ def _roster_rows() -> List[Dict[str, Any]]:
     return rows
 
 
+def _roster_row_state(row: Dict[str, Any]) -> str:
+    if row.get("ai") is True:
+        return "AI"
+    if row.get("ai") is False or row.get("session_key") or row.get("sid"):
+        return "Human"
+    return "Empty"
+
+
+def _roster_row_name(row: Dict[str, Any], state: str) -> str:
+    if state == "Empty":
+        return ""
+    if state == "AI":
+        bot_sid = str(row.get("bot_sid") or "").strip()
+        if bot_sid:
+            return str(row.get("displayName") or bot_roster_name(bot_sid) or bot_sid)
+    return str(row.get("displayName") or row.get("sid") or row.get("bot_sid") or "")
+
+
 def _display_roster_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Project live roster rows into the table order shown to users."""
     columns = [
         "key",
         "bot_sid",
-        "ai",
+        "state",
         "displayName",
         "sid",
         "location",
@@ -133,10 +151,14 @@ def _display_roster_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         "bound_at",
         "spawned_at",
     ]
-    return [
-        {column: row.get(column, "") for column in columns}
-        for row in rows
-    ]
+    out = []
+    for row in rows:
+        state = _roster_row_state(row)
+        display_row = dict(row)
+        display_row["state"] = state
+        display_row["displayName"] = _roster_row_name(row, state)
+        out.append({column: display_row.get(column, "") for column in columns})
+    return out
 
 
 @public
