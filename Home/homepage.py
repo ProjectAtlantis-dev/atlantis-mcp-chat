@@ -72,7 +72,7 @@ async def homepage() -> dict:
             "/terminal on",
             "app on",
             "term_default",
-            "game_background_default",
+            "user_background_default",
             "first_menu"
         ],
     }

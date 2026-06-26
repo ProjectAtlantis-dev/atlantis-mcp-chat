@@ -3,6 +3,8 @@ their UI pickers. This layer sits above the game-record foundation (.game) and
 the camera/roster views, so it may import all of them without a cycle."""
 
 import atlantis
+import asyncio
+import html as html_lib
 import humanize
 import json
 import os
@@ -11,9 +13,9 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
-from .bot import bot_entry_location
+from .bot import bot_entry_location, bot_roster_name
 from .camera import _camera_follow_slot
-from .modal import modal_menu, modal_string
+from .modal import _modal_panel_css, modal_menu
 from .game import (
     GAME_STATE_STOPPED,
     _caller_is_member,
@@ -24,10 +26,10 @@ from .game import (
     _game_rows,
     _game_update,
     add_caller_membership,
-    game_background_default,
     game_dir,
     require_membership,
 )
+from .user import user_background_default
 
 
 def _roster_slot_state(row: Dict[str, Any]) -> str:
@@ -42,7 +44,488 @@ def _roster_slot_name(row: Dict[str, Any]) -> str:
     state = _roster_slot_state(row)
     if state == "Empty":
         return "-"
+    if state == "AI":
+        bot_sid = str(row.get("bot_sid") or "").strip()
+        if bot_sid:
+            return str(row.get("displayName") or bot_roster_name(bot_sid) or bot_sid)
     return str(row.get("displayName") or row.get("sid") or row.get("bot_sid") or "-")
+
+
+async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Optional[Dict[str, str]]:
+    uid = uuid.uuid4().hex[:8]
+    roster_modal_id = f"roster_edit:{uid}"
+    roster_modal_id_js = json.dumps(roster_modal_id)
+    heading_block = f"<h2>{html_lib.escape(heading)}</h2>" if heading else ""
+    rows_html = []
+    state_options = [("human", "Human"), ("ai", "AI"), ("empty", "Empty")]
+
+    for row in roster:
+        slot_key = str(row.get("key") or "").strip()
+        if not slot_key:
+            continue
+        state = _roster_slot_state(row)
+        state_value = state.lower()
+        display_name = "" if state == "Empty" else _roster_slot_name(row)
+        select_options = "".join(
+            f'<option value="{value}"{" selected" if label == state else ""}>{label}</option>'
+            for value, label in state_options
+        )
+        rows_html.append(f"""
+      <tr class="roster-row" data-slot-key="{html_lib.escape(slot_key, quote=True)}" data-state="{state_value}" data-name="{html_lib.escape(display_name, quote=True)}">
+        <td>{html_lib.escape(slot_key)}</td>
+        <td>{html_lib.escape(str(row.get("bot_sid") or ""))}</td>
+        <td class="roster-state">
+        <select aria-label="{html_lib.escape(slot_key, quote=True)} state">
+          {select_options}
+        </select>
+        </td>
+        <td class="roster-name"></td>
+      </tr>
+""")
+
+    if not rows_html:
+        raise RuntimeError("No roster slots found")
+
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    atlantis.session_shared.set(f"{roster_modal_id}:future", future)
+    html = f"""
+<style>
+{_modal_panel_css(
+    f"#roster-edit-panel-{uid}",
+    f"#rosteredit-{uid}",
+    ready_class="roster-edit-ready",
+    padding=22,
+    heading_margin="4px 0 16px",
+    heading_font_size=24,
+    heading_line_height=1.15,
+)}
+  #rosteredit-{uid} {{
+    width: max-content;
+    max-width: 100%;
+    min-width: 0;
+    visibility: hidden;
+  }}
+  .jsPanel:has(#rosteredit-{uid}) {{
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 32px) !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translateX(-50%) !important;
+  }}
+  #rosteredit-{uid} .roster-table {{
+    border-collapse: separate;
+    border-spacing: 0 8px;
+    table-layout: auto;
+    width: auto;
+    max-width: 100%;
+  }}
+  #rosteredit-{uid} th {{
+    padding: 0 14px 2px;
+    color: rgba(255, 250, 240, 0.68);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-align: left;
+    text-transform: uppercase;
+  }}
+  #rosteredit-{uid} td {{
+    box-sizing: border-box;
+    min-height: 42px;
+    padding: 0 14px;
+    color: #fffaf0;
+    background: rgba(7, 15, 22, 0.58);
+    font-size: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }}
+  #rosteredit-{uid} td:first-child {{
+    border: 1px solid rgba(20, 255, 208, 0.34);
+    border-right: 0;
+    border-radius: 6px 0 0 6px;
+  }}
+  #rosteredit-{uid} td:not(:first-child):not(:last-child) {{
+    border-top: 1px solid rgba(20, 255, 208, 0.34);
+    border-bottom: 1px solid rgba(20, 255, 208, 0.34);
+  }}
+  #rosteredit-{uid} td:last-child {{
+    border: 1px solid rgba(20, 255, 208, 0.34);
+    border-left: 0;
+    border-radius: 0 6px 6px 0;
+  }}
+  #rosteredit-{uid} .roster-row {{
+    height: 42px;
+  }}
+  #rosteredit-{uid} .roster-empty-name {{
+    color: rgba(255, 250, 240, 0.52);
+  }}
+  #rosteredit-{uid} input,
+  #rosteredit-{uid} select {{
+    box-sizing: border-box;
+    min-height: 30px;
+    color: #fffaf0;
+    background: rgba(20, 50, 60, 0.94);
+    border: 1px solid rgba(20, 255, 208, 0.48);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 16px;
+  }}
+  #rosteredit-{uid} input {{
+    width: 150px;
+    padding: 0 10px;
+  }}
+  #rosteredit-{uid} input::placeholder {{
+    color: rgba(255, 250, 240, 0.42);
+  }}
+  #rosteredit-{uid} select {{
+    width: 104px;
+    padding: 0 28px 0 10px;
+    cursor: pointer;
+  }}
+  #rosteredit-{uid} input:focus,
+  #rosteredit-{uid} select:focus {{
+    border-color: rgba(20, 255, 208, 0.72);
+    outline: 2px solid rgba(20, 255, 208, 0.24);
+    outline-offset: 1px;
+  }}
+  #rosteredit-{uid} .roster-error {{
+    min-height: 16px;
+    margin-top: 2px;
+    color: #ffb4a8;
+    font-size: 13px;
+  }}
+  #rosteredit-{uid} .roster-error:empty {{
+    display: none;
+  }}
+  #rosteredit-{uid} .roster-actions {{
+    display: flex;
+    justify-content: center;
+    padding-top: 8px;
+  }}
+  #rosteredit-{uid} .roster-ok {{
+    box-sizing: border-box;
+    min-width: 92px;
+    min-height: 38px;
+    padding: 0 18px;
+    color: #fffaf0;
+    background: linear-gradient(to bottom, #1a8a78, #143a52);
+    border: 1px solid rgba(20, 255, 208, 0.48);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+  }}
+  #rosteredit-{uid} .roster-ok:hover,
+  #rosteredit-{uid} .roster-ok:focus {{
+    background: linear-gradient(to bottom, #22b89e, #1a527a);
+    border-color: rgba(20, 255, 208, 0.72);
+    outline: none;
+  }}
+</style>
+<section id="rosteredit-{uid}" aria-label="Roster editor">
+  {heading_block}
+  <table class="roster-table">
+    <thead>
+      <tr>
+        <th scope="col">Slot</th>
+        <th scope="col">Default</th>
+        <th scope="col">State</th>
+        <th scope="col">Name</th>
+      </tr>
+    </thead>
+    <tbody>
+    {"".join(rows_html)}
+    </tbody>
+  </table>
+  <div id="roster-error-{uid}" class="roster-error" aria-live="polite"></div>
+  <div class="roster-actions">
+    <button type="button" class="roster-ok">OK</button>
+  </div>
+</section>
+"""
+    modal_id = await atlantis.client_modal(html, title="Roster")
+    atlantis.session_shared.set(f"{roster_modal_id}:modal_id", modal_id)
+    exec_shell_js = json.dumps(atlantis.get_exec_shell_path())
+    script = f"""
+(function() {{
+  var settled = false;
+  var observer = null;
+  function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function reveal(root) {{
+    root.style.visibility = "visible";
+    root.classList.add("roster-edit-ready");
+  }}
+  function markHost(host) {{
+    if (!host) return;
+    if (!host.id) host.id = "roster-edit-panel-{uid}";
+    host.classList.add("roster-edit-panel");
+    host.dataset.modalKind = "roster-edit";
+    host.dataset.rosterEditUid = "{uid}";
+  }}
+  function centerDialog(root, shouldReveal) {{
+    var host = null;
+    var node = root;
+    for (var i = 0; i < 8 && node && node !== document.body; i++) {{
+      var style = window.getComputedStyle(node);
+      var rect = node.getBoundingClientRect();
+      var fillsViewport = rect.width >= window.innerWidth * 0.9 && rect.height >= window.innerHeight * 0.9;
+      if ((style.position === "fixed" || style.position === "absolute") && !fillsViewport) {{
+        host = node;
+        break;
+      }}
+      node = node.parentElement;
+    }}
+    if (!host) {{
+      if (shouldReveal) reveal(root);
+      return;
+    }}
+    markHost(host);
+    host.style.minWidth = "0";
+    host.style.width = "auto";
+    var preRect = host.getBoundingClientRect();
+    var rootRect = root.getBoundingClientRect();
+    var hostExtraWidth = Math.max(0, Math.ceil(preRect.width - rootRect.width));
+    var targetWidth = Math.ceil(root.scrollWidth + hostExtraWidth);
+    var viewportMax = Math.max(0, window.innerWidth - 32);
+    host.style.width = Math.min(targetWidth, viewportMax) + "px";
+    host.style.maxWidth = "calc(100vw - 32px)";
+    host.style.left = "50%";
+    host.style.right = "auto";
+    host.style.bottom = "auto";
+    host.style.margin = "0";
+    var adjustedRect = host.getBoundingClientRect();
+    var viewportMargin = 16;
+    var centeredTop = Math.round((window.innerHeight - adjustedRect.height) / 2);
+    var maxTop = Math.max(viewportMargin, window.innerHeight - adjustedRect.height - viewportMargin);
+    var clampedTop = Math.min(Math.max(viewportMargin, centeredTop), maxTop);
+    host.style.top = clampedTop + "px";
+    host.style.transform = "translateX(-50%)";
+    if (shouldReveal) reveal(root);
+  }}
+  function scheduleCenter(root) {{
+    centerDialog(root, false);
+    requestAnimationFrame(function() {{
+      centerDialog(root, false);
+      setTimeout(function() {{ centerDialog(root, true); }}, 180);
+    }});
+  }}
+  async function send(action, payload) {{
+    if (settled) return;
+    if (!window._accessToken) return;
+    settled = true;
+    cleanup();
+    await sendChatter(window._accessToken, action, payload, {exec_shell_js});
+  }}
+  async function cancel() {{
+    try {{
+      await send("@roster_edit_modal_cancel", {{ roster_modal_id: {roster_modal_id_js} }});
+    }} catch (e) {{}}
+  }}
+  function error(message) {{
+    var node = document.getElementById("roster-error-{uid}");
+    if (node) node.textContent = message || "";
+  }}
+  function rowState(row) {{
+    return (row && row.getAttribute("data-state")) || "empty";
+  }}
+  function rowName(row) {{
+    return (row && row.getAttribute("data-name")) || "";
+  }}
+  function nameCell(row) {{
+    return row ? row.querySelector(".roster-name") : null;
+  }}
+  function selectFor(row) {{
+    return row ? row.querySelector("select") : null;
+  }}
+  function setSelect(row, value) {{
+    var select = selectFor(row);
+    if (select) select.value = value || rowState(row);
+  }}
+  function renderName(row, shouldFocus) {{
+    var cell = nameCell(row);
+    if (!cell) return;
+    cell.textContent = "";
+    var state = row.getAttribute("data-pending-state") || rowState(row);
+    if (state === "human") {{
+      var input = document.createElement("input");
+      input.type = "text";
+      input.value = rowName(row);
+      input.placeholder = "Name";
+      input.maxLength = 200;
+      input.setAttribute("aria-label", (row.getAttribute("data-slot-key") || "Slot") + " name");
+      input.addEventListener("keydown", function(event) {{
+        if (event.key === "Enter") {{
+          event.preventDefault();
+          commitHuman(row);
+        }} else if (event.key === "Escape") {{
+          event.preventDefault();
+          error("");
+          row.removeAttribute("data-pending-state");
+          setSelect(row, rowState(row));
+          renderName(row, false);
+        }}
+      }});
+      cell.appendChild(input);
+      if (shouldFocus) {{
+        input.focus({{ preventScroll: true }});
+        input.select();
+      }}
+      return;
+    }}
+    var span = document.createElement("span");
+    if (state === "empty") {{
+      span.className = "roster-empty-name";
+      span.textContent = "-";
+    }} else {{
+      span.textContent = rowName(row) || "-";
+    }}
+    cell.appendChild(span);
+  }}
+  function commitHuman(row) {{
+    var input = row && row.querySelector(".roster-name input");
+    var value = input ? input.value.trim() : "";
+    if (!value) {{
+      error("Enter a name for the human slot.");
+      if (input) input.focus({{ preventScroll: true }});
+      return;
+    }}
+    send("@roster_edit_modal_change", {{
+      roster_modal_id: {roster_modal_id_js},
+      slot_key: row ? (row.getAttribute("data-slot-key") || "") : "",
+      state: "human",
+      display_name: value
+    }});
+  }}
+  function commitPendingHuman(root) {{
+    var active = document.activeElement;
+    var row = active && active.closest ? active.closest(".roster-row") : null;
+    if (row && active.matches && active.matches(".roster-name input")) {{
+      commitHuman(row);
+      return true;
+    }}
+    row = Array.prototype.slice.call(root.querySelectorAll(".roster-row")).find(function(candidate) {{
+      return candidate.getAttribute("data-pending-state") === "human";
+    }});
+    if (row) {{
+      commitHuman(row);
+      return true;
+    }}
+    row = Array.prototype.slice.call(root.querySelectorAll(".roster-row")).find(function(candidate) {{
+      var input = candidate.querySelector(".roster-name input");
+      return input && input.value.trim() !== rowName(candidate);
+    }});
+    if (row) {{
+      commitHuman(row);
+      return true;
+    }}
+    return false;
+  }}
+  function bind() {{
+    var root = document.getElementById("rosteredit-{uid}");
+    if (!root) return;
+    scheduleCenter(root);
+    Array.prototype.slice.call(root.querySelectorAll(".roster-row")).forEach(function(row) {{
+      renderName(row, false);
+    }});
+    Array.prototype.slice.call(root.querySelectorAll(".roster-row select")).forEach(function(select) {{
+      select.addEventListener("change", function() {{
+        var row = select.closest(".roster-row");
+        error("");
+        if (select.value === "human") {{
+          if (row) {{
+            row.setAttribute("data-pending-state", "human");
+            renderName(row, true);
+          }}
+          return;
+        }}
+        if (row) row.removeAttribute("data-pending-state");
+        send("@roster_edit_modal_change", {{
+          roster_modal_id: {roster_modal_id_js},
+          slot_key: row ? (row.getAttribute("data-slot-key") || "") : "",
+          state: select.value || "",
+          display_name: ""
+        }});
+      }});
+    }});
+    var ok = root.querySelector(".roster-ok");
+    if (ok) {{
+      ok.addEventListener("click", function() {{
+        if (commitPendingHuman(root)) return;
+        send("@roster_edit_modal_ok", {{ roster_modal_id: {roster_modal_id_js} }});
+      }});
+    }}
+    var firstSelect = root.querySelector(".roster-row select");
+    if (firstSelect) firstSelect.focus({{ preventScroll: true }});
+    observer = new MutationObserver(function() {{
+      if (!document.body.contains(root)) {{ cancel(); }}
+    }});
+    observer.observe(document.body, {{ childList: true, subtree: true }});
+  }}
+  requestAnimationFrame(function() {{ requestAnimationFrame(bind); }});
+}})()
+"""
+    await atlantis.client_script(script)
+    try:
+        return await future
+    finally:
+        atlantis.session_shared.remove(f"{roster_modal_id}:future")
+        atlantis.session_shared.remove(f"{roster_modal_id}:modal_id")
+
+
+async def _settle_roster_edit_modal(roster_modal_id: str, result: Optional[Dict[str, str]]) -> None:
+    modal_key = f"{roster_modal_id}:modal_id"
+    future_key = f"{roster_modal_id}:future"
+    modal_id = atlantis.session_shared.get(modal_key)
+    if modal_id:
+        try:
+            await atlantis.client_modal_close(modal_id)
+        except Exception:
+            pass
+        atlantis.session_shared.remove(modal_key)
+    future = atlantis.session_shared.get(future_key)
+    if future is None:
+        raise ValueError("Roster editor modal is no longer active")
+    if not future.done():
+        future.set_result(result)
+
+
+@public
+@visible
+async def roster_edit_modal_change(
+    roster_modal_id: str,
+    slot_key: str,
+    state: str,
+    display_name: Optional[str] = None,
+) -> None:
+    """Handle a roster editor state dropdown change."""
+    await _settle_roster_edit_modal(
+        roster_modal_id,
+        {
+            "action": "state",
+            "slot_key": str(slot_key or "").strip(),
+            "state": str(state or "").strip().lower(),
+            "display_name": str(display_name or "").strip(),
+        },
+    )
+
+
+@public
+@visible
+async def roster_edit_modal_ok(roster_modal_id: str) -> None:
+    """Handle the roster editor OK button."""
+    await _settle_roster_edit_modal(roster_modal_id, {"action": "ok"})
+
+
+@public
+@visible
+async def roster_edit_modal_cancel(roster_modal_id: str) -> None:
+    """Handle closing the roster editor without an explicit action."""
+    await _settle_roster_edit_modal(roster_modal_id, None)
 
 
 def _caller_roster_row(roster: list, session_key: str, caller_sid: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -190,81 +673,30 @@ async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
 
 @visible
 async def roster_edit(
-    heading: str = "Roster",
-) -> Optional[Dict[str, Any]]:
+    heading: str = "Edit Roster",
+) -> None:
     while True:
         roster = await atlantis.client_command("@roster_list")
-        slot_choices = []
-        for row in roster:
-            slot_key = str(row.get("key") or "").strip()
-            if not slot_key:
-                continue
-            state = _roster_slot_state(row)
-            slot_choices.append({
-                "id": slot_key,
-                "text": slot_key,
-                "columns": [
-                    slot_key,
-                    str(row.get("bot_sid") or ""),
-                    state,
-                    _roster_slot_name(row),
-                ],
-                "column_headers": ["Slot", "Default", "State", "Name"],
-                "slot_key": slot_key,
-            })
-
-        if not slot_choices:
-            raise RuntimeError("No roster slots found")
-
-        slot_choices.append({
-            "id": "__ok__",
-            "text": "OK",
-            "columns": ["OK", "", "", ""],
-            "column_headers": ["Slot", "Default", "State", "Name"],
-        })
-
-        slot_choice = await modal_menu(
-            slot_choices,
-            title="Roster",
-            heading=heading,
-            width_ratio=0.67,
-        )
-        if slot_choice is None:
+        modal_result = await _roster_edit_modal(roster, heading=heading)
+        if modal_result is None:
             return None
-        if slot_choice.get("id") == "__ok__":
-            roster = await atlantis.client_command("@roster_list")
-            return _caller_roster_row(roster, atlantis.get_session_key() or "", atlantis.get_caller())
 
-        slot_key = str(slot_choice.get("slot_key") or slot_choice.get("id") or "").strip()
+        if modal_result.get("action") == "ok":
+            return None
+
+        slot_key = str(modal_result.get("slot_key") or "").strip()
         if not slot_key:
             return None
 
-        state_choice = await modal_menu(
-            [
-                {"id": "empty", "text": "Empty"},
-                {"id": "ai", "text": "AI"},
-                {"id": "human", "text": "Human"},
-            ],
-            title="Roster",
-            heading=f"{slot_key}: choose state",
-            width_ratio=0.42,
-        )
-        if state_choice is None:
+        state = str(modal_result.get("state") or "").strip().lower()
+        if state not in {"empty", "ai", "human"}:
             continue
 
-        state = str(state_choice.get("id") or "").strip().lower()
         display_name = None
         if state == "human":
-            display_name = await modal_string(
-                f"What name should people call {slot_key}?",
-                title="Roster - Human",
-                submit_label="Join",
-            )
-            if display_name is None:
-                continue
-            display_name = str(display_name or "").strip()
+            display_name = str(modal_result.get("display_name") or "").strip()
             if not display_name:
-                raise ValueError("display_name required")
+                continue
 
         await atlantis.client_command(
             "@roster_set_slot",
@@ -301,7 +733,7 @@ async def game_new() -> Dict[str, Any]:
     })
 
     await atlantis.client_log(f"Game created: {game_key}")
-    await game_background_default()
+    await user_background_default()
 
     return {
         "game_key": game_key,
@@ -506,7 +938,9 @@ async def game_init(game_key: str):
 
     bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
     if bound_row is None:
-        bound_row = await roster_edit()
+        await roster_edit()
+        roster = await atlantis.client_command("@roster_list")
+        bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
     if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
         location = bot_entry_location(bound_row["bot_sid"])
         await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
