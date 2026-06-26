@@ -4,8 +4,8 @@ from pathlib import Path
 
 import atlantis
 
-from .game import game_find_or_create
 from .modal import modal_menu
+from .runner import game_find_or_create
 
 # % first_menu
 

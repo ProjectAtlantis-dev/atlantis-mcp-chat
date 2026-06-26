@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ffprobe *)",
+      "mcp__atlantis__readme"
+    ]
+  }
+}

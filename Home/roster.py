@@ -54,7 +54,7 @@ def _scene_roster_rows(scene: str) -> List[Dict[str, Any]]:
         rows.append({
             "key": key,
             "bot_sid": bot_sid,
-            "ai": True,
+            "ai": None,
             "displayName": None,
             "location": None,
             "spawned_at": None,
@@ -90,7 +90,7 @@ def _find_roster_row(rows: List[Dict[str, Any]], sid_or_key: str) -> Dict[str, A
         candidates = [row.get("key")]
         if row.get("ai") is False:
             candidates.append(row.get("sid"))
-        else:
+        elif row.get("ai") is True:
             candidates.append(row.get("bot_sid"))
         if needle in candidates:
             matches.append(row)
@@ -147,6 +147,84 @@ async def roster_list(game_key: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _reset_roster_slot(target: Dict[str, Any]) -> None:
+    target["displayName"] = None
+    target["location"] = None
+    target["spawned_at"] = None
+    target["session_key"] = None
+    target["sid"] = None
+    target["user_game_id"] = None
+    target["bound_at"] = None
+
+
+def _set_roster_slot_empty(target: Dict[str, Any]) -> None:
+    _reset_roster_slot(target)
+    target["ai"] = None
+
+
+def _set_roster_slot_ai(target: Dict[str, Any]) -> None:
+    _reset_roster_slot(target)
+    target["ai"] = True
+
+
+def _set_roster_slot_human(target: Dict[str, Any], display_name: str) -> None:
+    session_key = atlantis.get_session_key()
+    if not session_key:
+        raise RuntimeError("No session key in this call context")
+    display_name = str(display_name or "").strip()
+    if not display_name:
+        raise ValueError("display_name required")
+    _reset_roster_slot(target)
+    target["session_key"] = session_key
+    target["sid"] = atlantis.get_caller() or None
+    target["user_game_id"] = atlantis.get_user_game_id()
+    target["ai"] = False
+    target["displayName"] = display_name
+    target["bound_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+@public
+async def roster_set_slot(game_key: str, slot_key: str, state: str, display_name: Optional[str] = None) -> Dict[str, Any]:
+    """Set a roster slot to Empty, AI, or Human."""
+    slot_key = str(slot_key or "").strip()
+    if not slot_key:
+        raise ValueError("slot_key required")
+
+    state_key = str(state or "").strip().lower()
+    if state_key not in {"empty", "ai", "human"}:
+        raise ValueError("state must be one of: empty, ai, human")
+
+    rows = _load_game_roster(game_key)
+    target = next((row for row in rows if row.get("key") == slot_key), None)
+    if target is None:
+        raise ValueError(f"Unknown roster slot: {slot_key!r}")
+
+    moved_slots: List[tuple[Dict[str, Any], Optional[str]]] = [(target, target.get("location") or None)]
+    if state_key == "empty":
+        _set_roster_slot_empty(target)
+    elif state_key == "ai":
+        _set_roster_slot_ai(target)
+    else:
+        session_key = atlantis.get_session_key()
+        caller_sid = atlantis.get_caller()
+        for row in rows:
+            if row is target:
+                continue
+            if row.get("session_key") == session_key or (caller_sid and row.get("sid") == caller_sid):
+                moved_slots.append((row, row.get("location") or None))
+                _set_roster_slot_empty(row)
+        _set_roster_slot_human(target, str(display_name or ""))
+
+    _write_game_roster(game_key, rows)
+    await atlantis.client_log(f"roster_set_slot game_key: {game_key!r} slot_key: {slot_key!r} state: {state_key!r}")
+    await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
+    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    for moved_slot, previous_location in moved_slots:
+        if previous_location:
+            await _notify_roster_slot_moved(game_key, moved_slot, moved_slot.get("location") or None)
+    return target
+
+
 @public
 async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
     """Create Data/games/<game_key>/roster.json from a static scene file."""
@@ -196,7 +274,7 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
 
     display_name = await modal_string(
         f"What name should people call {slot_key}?",
-        title="Roster",
+        title="Roster - Human",
         submit_label="Join",
     )
     if display_name is None:
@@ -205,13 +283,7 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     if not display_name:
         raise ValueError("display_name required")
 
-    target["session_key"] = session_key
-    target["sid"] = atlantis.get_caller() or None
-    target["user_game_id"] = atlantis.get_user_game_id()
-    target["ai"] = False
-    target["displayName"] = display_name
-    target["bound_at"] = datetime.now().isoformat(timespec="seconds")
-
+    _set_roster_slot_human(target, display_name)
     _write_game_roster(game_key, rows)
     await atlantis.client_log(f"Saved roster binding for {game_key!r} slot {slot_key!r}")
     await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
@@ -318,9 +390,3 @@ async def roster_despawn(game_key: str, sid: str) -> Dict[str, Any]:
     await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
     await _notify_roster_slot_moved(game_key, target, None)
     return target
-
-
-@public
-async def roster_show(game_key: str) -> List[Dict[str, Any]]:
-    """Show Data/games/<game_key>/roster.json, if a scene roster has been created."""
-    return await roster_list(game_key)

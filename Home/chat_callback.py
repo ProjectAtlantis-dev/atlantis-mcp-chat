@@ -10,7 +10,7 @@ from .chat import (
     analyze_participants, fetch_transcript,
 )
 from .common import _read_json
-from .game import _game_roster_scene, game_find_current, require_membership
+from .game import _game_is_running, _game_roster_scene, game_find_current, require_membership
 from .roster import _load_game_roster
 from .turn import bot_turn
 
@@ -48,6 +48,9 @@ async def chat_callback():
     atlantis.session_shared.set(_BUSY_KEY, request_id)
     try:
         game_key = await game_find_current()
+        if not _game_is_running(game_key):
+            logger.debug(f"chat_callback game {game_key!r} is stopped, skipping")
+            return
         _require_roster_assigned(game_key)
         await _handle_chat(game_key)
     finally:
@@ -140,7 +143,7 @@ def _last_chat_signature(raw_transcript: List[Dict[str, Any]]) -> str:
 
 
 def _is_ai(row: Dict[str, Any]) -> bool:
-    return row.get("ai") is not False
+    return row.get("ai") is True
 
 
 def _display_name(row: Dict[str, Any]) -> str:

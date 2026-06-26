@@ -8,6 +8,8 @@ game, not an error.
 import atlantis
 import logging
 
+from .game import _game_is_running
+
 logger = logging.getLogger("dynamic_function")
 
 _BUSY_KEY = "chat_busy"
@@ -18,6 +20,10 @@ async def tick_callback(game_key: str):
     """Game tick: let an AI bot initiate action if any are in-world."""
     if not atlantis.get_session_key():
         logger.warning("tick_callback fired without session context, skipping")
+        return
+
+    if not _game_is_running(game_key):
+        logger.debug(f"tick_callback game {game_key!r} is stopped, skipping")
         return
 
     if atlantis.session_shared.get(_BUSY_KEY):
