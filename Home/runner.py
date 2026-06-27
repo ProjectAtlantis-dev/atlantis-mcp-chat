@@ -543,6 +543,7 @@ def _caller_roster_row(roster: list, session_key: str, caller_sid: Optional[str]
     return None
 
 
+@visible
 async def _game_resume(game_key: str) -> str:
     meta = _game_read(game_key)
     members = meta.setdefault("members", {})
@@ -555,29 +556,37 @@ async def _game_resume(game_key: str) -> str:
         add_caller_membership(members)
         _game_update(game_key, meta)
     await atlantis.client_log(f"Existing game found: {game_key}")
+    return await _game_enter(game_key)
+
+
+@visible
+async def _game_enter(game_key: str) -> str:
+    redirect_url = _game_window_redirect_url(game_key)
+    if redirect_url:
+        await atlantis.client_log(f"Redirecting to game window: {redirect_url}")
+        await atlantis.client_script(f"window.location.assign({redirect_url!r});")
+        return game_key
     await atlantis.client_command("/cursor join", {"game_key": game_key})
     await game_init(game_key)
     return game_key
 
 
-async def _game_redirect_if_user_game_mismatch(game_key: str) -> bool:
+@visible
+def _game_window_redirect_url(game_key: str) -> Optional[str]:
     meta = _game_read(game_key)
     target_user_game_id = meta.get("user_game_id")
     if target_user_game_id is None:
-        return False
+        return None
 
     current_user_game_id = atlantis.get_user_game_id()
     if str(target_user_game_id) == str(current_user_game_id):
-        return False
+        return None
 
     sid = str(meta.get("owner") or atlantis.get_caller() or "").strip()
     query = {"game": str(target_user_game_id)}
     if sid:
         query["sid"] = sid
-    url = f"chat.html?{urlencode(query)}"
-    await atlantis.client_log(f"Redirecting to game window: {url}")
-    await atlantis.client_script(f"window.location.assign({url!r});")
-    return True
+    return f"chat.html?{urlencode(query)}"
 
 
 def _format_game_menu_age(value: Any) -> str:
@@ -591,6 +600,7 @@ def _format_game_menu_age(value: Any) -> str:
     return humanize.naturaltime(datetime.now() - parsed)
 
 
+@visible
 async def _game_pick(
     games: Optional[list] = None,
     heading: str = "Choose a game",
@@ -633,8 +643,6 @@ async def _game_pick(
         return None
     game_key = str(choice.get("game_key") or choice.get("id") or "").strip()
     if not game_key:
-        return None
-    if await _game_redirect_if_user_game_mismatch(game_key):
         return None
     return game_key
 
@@ -780,22 +788,33 @@ async def _game_join_or_prompt(game_key: str, meta: Dict[str, Any]) -> Dict[str,
     if _caller_is_member(meta, session_key) or atlantis.get_caller() == meta.get("owner", ""):
         return await _game_join_authorized(game_key, meta)
 
-    password = await modal_string(
-        f"Enter game password:",
-        submit_label="Join",
+    while True:
+        password = await modal_string(
+            "Enter game password:",
+            submit_label="Join",
+            title=f"Game {game_key}",
+            submitting_label="Joining...",
+            empty_error="Enter the password to continue.",
+            input_type="password",
+            autocomplete="current-password",
+        )
+        if password is None:
+            return {"cancelled": True}
+
+        if meta.get('join_password') == password:
+            return await _game_join_authorized(game_key, meta)
+
+        await _game_password_error(game_key)
+
+
+@visible
+async def _game_password_error(game_key: str) -> None:
+    await modal_menu(
+        [{"id": "ok", "text": "OK"}],
         title=f"Game {game_key}",
-        submitting_label="Joining...",
-        empty_error="Enter the password to continue.",
-        input_type="password",
-        autocomplete="current-password",
+        heading="Incorrect password",
+        width_ratio=0.4,
     )
-    if password is None:
-        return {"cancelled": True}
-
-    if meta.get('join_password') != password:
-        raise ValueError(f"Incorrect password for game {game_key}")
-
-    return await _game_join_authorized(game_key, meta)
 
 
 def _game_candidates(games: list, action: str) -> list:
@@ -832,13 +851,11 @@ async def _game_join_authorized(game_key: str, meta: Dict[str, Any]) -> Dict[str
     _game_update(game_key, meta)
     if already_member:
         await atlantis.client_log(f"user already in game: {game_key}")
-        return {"game_key": game_key}
-
-    await atlantis.client_log(
-        f"✅ {atlantis.get_caller() or atlantis.get_session_key()} joined game {game_key}"
-    )
-    await atlantis.client_command("/cursor join", {"game_key": game_key})
-    await game_init(game_key)
+    else:
+        await atlantis.client_log(
+            f"✅ {atlantis.get_caller() or atlantis.get_session_key()} joined game {game_key}"
+        )
+    await _game_enter(game_key)
     return {"game_key": game_key}
 
 

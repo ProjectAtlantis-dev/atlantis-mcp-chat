@@ -41,15 +41,24 @@ async def chat_callback():
         return
 
     request_id = atlantis.get_request_id() or "unknown"
+    logger.info(
+        "chat_callback start: request_id=%s session=%s caller=%s user_game_id=%s",
+        request_id,
+        atlantis.get_session_key(),
+        atlantis.get_caller(),
+        atlantis.get_user_game_id(),
+    )
     if atlantis.session_shared.get(_BUSY_KEY):
-        logger.debug(f"chat_callback busy, skipping {request_id}")
+        logger.info("chat_callback busy, skipping request_id=%s", request_id)
         return
 
     atlantis.session_shared.set(_BUSY_KEY, request_id)
     try:
         game_key = await game_find_current()
+        logger.info("chat_callback game resolved: %s", game_key)
         if not _game_is_running(game_key):
-            logger.debug(f"chat_callback game {game_key!r} is stopped, skipping")
+            logger.info("chat_callback game %r is stopped, skipping", game_key)
+            await atlantis.client_log(f"chat_callback skipped: game {game_key!r} is stopped")
             return
         _require_roster_assigned(game_key)
         await _handle_chat(game_key)
@@ -58,9 +67,18 @@ async def chat_callback():
 
 
 async def _handle_chat(game_key: str):
+    logger.info("chat_callback handle_chat: game=%s", game_key)
     raw_transcript, transcript = await fetch_transcript(game_key)
     participants = analyze_participants(raw_transcript)
     speaker_sid = participants.get("last_speaker")
+    logger.info(
+        "chat_callback transcript: game=%s raw=%s filtered=%s last_speaker=%r participants=%s",
+        game_key,
+        len(raw_transcript),
+        len(transcript),
+        speaker_sid,
+        sorted((participants.get("participants") or {}).keys()),
+    )
     if not speaker_sid:
         await atlantis.client_log("No chat speaker found in transcript")
         return
@@ -69,7 +87,7 @@ async def _handle_chat(game_key: str):
     if signature:
         last_key = f"{_LAST_CHAT_KEY_PREFIX}{game_key}"
         if atlantis.session_shared.get(last_key) == signature:
-            logger.debug("chat_callback duplicate transcript trigger, skipping")
+            logger.info("chat_callback duplicate transcript trigger, skipping")
             return
         atlantis.session_shared.set(last_key, signature)
 
@@ -82,14 +100,23 @@ async def _handle_chat(game_key: str):
     if not location:
         raise RuntimeError(f"Chat speaker {speaker_sid!r} has no current location yet")
 
-    occupants = _location_occupants(roster, location)
-    if not occupants:
+    all_listeners = _all_listeners(roster, location)
+    bot_listeners = _bot_listeners(roster, speaker)
+    logger.info(
+        "chat_callback listeners: game=%s speaker=%s location=%s all_listeners=%s bot_listeners=%s",
+        game_key,
+        _display_name(speaker),
+        location,
+        [_display_name(row) for row in all_listeners],
+        [_display_name(row) for row in bot_listeners],
+    )
+    if not all_listeners:
         await atlantis.client_log(f"Room [{location}] is empty")
         return
     await atlantis.client_log(
-        f"Room [{location}]: {', '.join(_display_name(row) for row in occupants)}"
+        f"Room [{location}]: {', '.join(_display_name(row) for row in all_listeners)}"
     )
-    if len(occupants) == 1:
+    if len(all_listeners) == 1:
         await atlantis.client_log(f"{_display_name(speaker)} is alone in {location}")
         return
 
@@ -98,17 +125,11 @@ async def _handle_chat(game_key: str):
         logger.debug("chat_callback bot chain limit reached, skipping")
         return
 
-    # Convo rule: among the speaker's current room occupants, pick the first AI
-    # roster member that did not just speak.
-    bots = [
-        row for row in occupants
-        if _is_ai(row) and row.get("bot_sid") and row.get("key") != speaker.get("key")
-    ]
-    if not bots:
+    if not bot_listeners:
         await atlantis.client_log(f"No AI roster member in {location} available to respond")
         return
 
-    bot_record = bots[0]
+    bot_record = bot_listeners[0]
     await atlantis.client_log(
         f"Next roster speaker: {bot_record.get('displayName', bot_record.get('bot_sid', 'bot'))}"
     )
@@ -150,10 +171,21 @@ def _display_name(row: Dict[str, Any]) -> str:
     return row.get("displayName") or row.get("bot_sid") or row.get("sid") or row.get("key") or "unknown"
 
 
-def _location_occupants(roster: List[Dict[str, Any]], location: str) -> List[Dict[str, Any]]:
+def _all_listeners(roster: List[Dict[str, Any]], location: str) -> List[Dict[str, Any]]:
     return [
         row for row in roster
         if row.get("location") == location
+    ]
+
+
+def _bot_listeners(roster: List[Dict[str, Any]], speaker: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """AI roster members in the same current location as the speaker."""
+    location = speaker.get("location")
+    if not location:
+        return []
+    return [
+        row for row in _all_listeners(roster, location)
+        if _is_ai(row) and row.get("bot_sid") and row.get("key") != speaker.get("key")
     ]
 
 
