@@ -31,6 +31,12 @@ def _require_roster_assigned(game_key: str) -> None:
     if not os.path.isfile(os.path.join(data_dir, "roster.json")):
         raise RuntimeError(f"Game {game_key!r} has no roster.json yet")
 
+@public
+@preflight
+async def preflight_callback():
+    await atlantis.client_log("doing preflight")
+
+
 
 @public
 @chat
