@@ -64,20 +64,6 @@ async def term_player_file(video_path: str) -> None:
 
 
 @public
-async def term_player_info() -> None:
-    """Print current terminal background player position and quality info."""
-    await atlantis.client_terminal_script("""
-(function(){
-  if (window._dumpBackgroundPlayerState) {
-    window._dumpBackgroundPlayerState();
-  } else {
-    console.warn("Background player inspector is not available");
-  }
-})();
-""")
-
-
-@public
 async def term_brightness(value: float) -> None:
     """Set terminal background brightness. 1 is normal, 0.6 is darker, values above 1 lighten."""
     brightness = float(value)
