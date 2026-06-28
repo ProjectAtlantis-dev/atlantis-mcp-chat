@@ -27,17 +27,14 @@ from .game import (
     _game_update,
     add_caller_membership,
     game_dir,
+    game_start,
     require_membership,
 )
 from .user import user_background_default
 
 
 def _roster_slot_state(row: Dict[str, Any]) -> str:
-    if row.get("ai") is True:
-        return "AI"
-    if row.get("ai") is False or row.get("session_key") or row.get("sid"):
-        return "Human"
-    return "Empty"
+    return str(row.get("state") or "").strip()
 
 
 def _roster_slot_name(row: Dict[str, Any]) -> str:
@@ -49,6 +46,15 @@ def _roster_slot_name(row: Dict[str, Any]) -> str:
         if bot_sid:
             return str(row.get("displayName") or bot_roster_name(bot_sid) or bot_sid)
     return str(row.get("displayName") or row.get("sid") or row.get("bot_sid") or "-")
+
+
+async def _warn_empty_roster() -> None:
+    await modal_menu(
+        [{"id": "ok", "text": "OK"}],
+        title="Roster",
+        heading="All roster slots are empty",
+        width_ratio=0.5,
+    )
 
 
 async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Optional[Dict[str, str]]:
@@ -536,7 +542,7 @@ def _caller_roster_row(roster: list, session_key: str, caller_sid: Optional[str]
         return next(
             (
                 row for row in roster
-                if row.get("ai") is False and row.get("sid") == caller_sid
+                if row.get("state") == "Human" and row.get("sid") == caller_sid
             ),
             None,
         )
@@ -958,6 +964,8 @@ async def game_init(game_key: str):
     if bound_row is None:
         await roster_edit()
         roster = await atlantis.client_command("@roster_list")
+        if roster and all(row.get("state") == "Empty" for row in roster):
+            await _warn_empty_roster()
         bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
     if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
         location = bot_entry_location(bound_row["bot_sid"])
@@ -970,3 +978,20 @@ async def game_init(game_key: str):
             bound_row["key"],
             replace_session_keys=_caller_session_keys(meta, session_key),
         )
+
+    meta = _game_read_from_dir(data_dir)
+    if (
+        atlantis.get_caller() == meta.get("owner")
+        and str(meta.get("state") or GAME_STATE_STOPPED).strip().lower() == GAME_STATE_STOPPED
+    ):
+        choice = await modal_menu(
+            [
+                {"id": "start", "text": "Start game"},
+                {"id": "keep_stopped", "text": "Keep stopped"},
+            ],
+            title="Game",
+            heading="Start the game?",
+            width_ratio=0.5,
+        )
+        if choice and choice.get("id") == "start":
+            await game_start(game_key)

@@ -100,7 +100,10 @@ async def _handle_chat(game_key: str):
     roster = _load_game_roster(game_key)
     speaker = _find_roster_speaker(roster, speaker_sid)
     if not speaker:
-        raise RuntimeError(f"Chat speaker {speaker_sid!r} is not in this game's roster")
+        await atlantis.client_log(
+            f"Chat speaker {speaker_sid!r} is not in this game's roster. Check the roster before chatting."
+        )
+        return
 
     location = speaker.get("location")
     if not location:

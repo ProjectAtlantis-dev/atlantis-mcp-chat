@@ -165,8 +165,9 @@ def _display_roster_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 async def roster_list(game_key: str) -> List[Dict[str, Any]]:
     """Show this game's live roster.json, including any roster_bind changes."""
     rows = _load_game_roster(game_key)
-    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
-    return rows
+    display_rows = _display_roster_rows(rows)
+    await atlantis.client_data(f"{game_key} roster", display_rows)
+    return display_rows
 
 
 def _reset_roster_slot(target: Dict[str, Any]) -> None:
@@ -261,8 +262,9 @@ async def roster_create(game_key: str, scene: str) -> List[Dict[str, Any]]:
     meta["roster_created_at"] = datetime.now().isoformat(timespec="seconds")
     meta.pop("roster", None)
     _write_json(os.path.join(data_dir, "game.json"), meta)
-    await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
-    return rows
+    display_rows = _display_roster_rows(rows)
+    await atlantis.client_data(f"{game_key} roster", display_rows)
+    return display_rows
 
 
 @public
