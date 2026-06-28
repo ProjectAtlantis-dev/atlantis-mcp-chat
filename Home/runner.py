@@ -935,6 +935,7 @@ async def game_init(game_key: str):
     chat_row = next(row for row in callbacks if row["mode"] == "chat")
 
     if not chat_row["toolPath"]:
+        await atlantis.client_command("callback set preflight auto")
         await atlantis.client_command("callback set chat auto")
 
         callbacks = await atlantis.client_command("/callback list")
