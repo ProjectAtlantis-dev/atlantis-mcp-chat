@@ -967,17 +967,6 @@ async def game_init(game_key: str):
         if roster and all(row.get("state") == "Empty" for row in roster):
             await _warn_empty_roster()
         bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
-    if bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
-        location = bot_entry_location(bound_row["bot_sid"])
-        await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
-    if bound_row and not bound_row.get("cancelled"):
-
-        meta = _game_read_from_dir(data_dir)
-        await _camera_follow_slot(
-            game_key,
-            bound_row["key"],
-            replace_session_keys=_caller_session_keys(meta, session_key),
-        )
 
     meta = _game_read_from_dir(data_dir)
     if (
@@ -995,3 +984,15 @@ async def game_init(game_key: str):
         )
         if choice and choice.get("id") == "start":
             await game_start(game_key)
+            meta = _game_read_from_dir(data_dir)
+
+    game_running = str(meta.get("state") or GAME_STATE_STOPPED).strip().lower() != GAME_STATE_STOPPED
+    if game_running and bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
+        location = bot_entry_location(bound_row["bot_sid"])
+        await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
+    if game_running and bound_row and not bound_row.get("cancelled"):
+        await _camera_follow_slot(
+            game_key,
+            bound_row["key"],
+            replace_session_keys=_caller_session_keys(meta, session_key),
+        )

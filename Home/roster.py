@@ -331,6 +331,22 @@ async def _notify_roster_slot_moved(game_key: str, target: Dict[str, Any], locat
     await camera_slot_moved(game_key, target["key"], location)
 
 
+async def _describe_roster_slot_entered(target: Dict[str, Any], location: str) -> None:
+    display_name = _roster_row_name(target, _roster_row_state(target)) or target.get("key") or "Someone"
+    await atlantis.client_description(
+        f"{display_name} entered.",
+        location=location,
+    )
+
+
+async def _describe_roster_slot_exited(target: Dict[str, Any], location: str) -> None:
+    display_name = _roster_row_name(target, _roster_row_state(target)) or target.get("key") or "Someone"
+    await atlantis.client_description(
+        f"{display_name} exited.",
+        location=location,
+    )
+
+
 def _require_adjacent_move(previous: str, location: str) -> None:
     if not previous:
         raise RuntimeError("Roster slot has no current location; use roster_spawn or roster_teleport first")
@@ -374,6 +390,10 @@ async def _roster_move(game_key: str, sid_or_slot: str, location: str, reason: s
     )
     await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
     await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    if previous and previous != location:
+        await _describe_roster_slot_exited(target, previous)
+    if previous != location:
+        await _describe_roster_slot_entered(target, location)
     await _notify_roster_slot_moved(game_key, target, location)
     return target
 
@@ -412,5 +432,7 @@ async def roster_despawn(game_key: str, sid: str) -> Dict[str, Any]:
     )
     await atlantis.client_data(f"{game_key} roster slot", _display_roster_rows([target])[0])
     await atlantis.client_data(f"{game_key} roster", _display_roster_rows(rows))
+    if previous:
+        await _describe_roster_slot_exited(target, previous)
     await _notify_roster_slot_moved(game_key, target, None)
     return target
