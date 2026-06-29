@@ -348,12 +348,26 @@ async def modal_menu(
         disabled_attr = " disabled aria-disabled=\"true\"" if choice.get("disabled") else ""
         columns = choice.get("columns")
         if isinstance(columns, list) and columns:
+            column_html = []
+            for column in columns:
+                if isinstance(column, dict) and column.get("type") == "image":
+                    src = str(column.get("src") or "").strip()
+                    alt = str(column.get("alt") or "")
+                    if src:
+                        column_html.append(
+                            '<span class="menu-choice-cell menu-choice-image-cell">'
+                            f'<img class="menu-choice-thumb" src="{html_lib.escape(src, quote=True)}" alt="{html_lib.escape(alt, quote=True)}">'
+                            '</span>'
+                        )
+                    else:
+                        column_html.append('<span class="menu-choice-cell menu-choice-image-cell"></span>')
+                    continue
+                column_html.append(
+                    f'<span class="menu-choice-cell">{html_lib.escape(str(column or ""))}</span>'
+                )
             button_content = (
                 '<span class="menu-choice-grid">'
-                + "".join(
-                    f'<span class="menu-choice-cell">{html_lib.escape(str(column or ""))}</span>'
-                    for column in columns
-                )
+                + "".join(column_html)
                 + "</span>"
             )
         else:
@@ -470,6 +484,19 @@ async def modal_menu(
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }}
+  #modalmenu-{uid} .menu-choice-image-cell {{
+    width: 44px;
+    min-width: 44px;
+    height: 32px;
+    overflow: hidden;
+  }}
+  #modalmenu-{uid} .menu-choice-thumb {{
+    display: block;
+    width: 44px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
   }}
   #modalmenu-{uid} .menu-choice:hover,
   #modalmenu-{uid} .menu-choice:focus {{

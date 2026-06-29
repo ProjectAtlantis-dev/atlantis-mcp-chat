@@ -23,6 +23,10 @@ def analyze_participants(raw_transcript: List[Dict[str, Any]]) -> Dict[str, Any]
         sid = msg.get('sid')
         if not sid or sid == 'system':
             continue
+        if 'thinking' in str(msg.get('who') or '').lower():
+            continue
+        if not str(msg.get('content') or '').strip():
+            continue
 
         timestamp = msg.get('created_at') or msg.get('created_at_str', '')
 

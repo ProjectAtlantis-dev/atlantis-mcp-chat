@@ -138,6 +138,30 @@ def _roster_row_name(row: Dict[str, Any], state: str) -> str:
     return str(row.get("displayName") or row.get("sid") or row.get("bot_sid") or "")
 
 
+def _roster_row_label(row: Dict[str, Any], empty_label: str = "-") -> str:
+    state = _roster_row_state(row)
+    return _roster_row_name(row, state) or empty_label
+
+
+def _caller_roster_row(
+    roster: List[Dict[str, Any]],
+    session_key: str,
+    caller_sid: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    row = next((row for row in roster if row.get("session_key") == session_key), None)
+    if row is not None:
+        return row
+    if caller_sid:
+        return next(
+            (
+                row for row in roster
+                if _roster_row_state(row) == "Human" and row.get("sid") == caller_sid
+            ),
+            None,
+        )
+    return None
+
+
 def _display_roster_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Project live roster rows into the table order shown to users."""
     columns = [
@@ -185,9 +209,14 @@ def _set_roster_slot_empty(target: Dict[str, Any]) -> None:
     target["ai"] = None
 
 
-def _set_roster_slot_ai(target: Dict[str, Any]) -> None:
+def _set_roster_slot_ai(target: Dict[str, Any], bot_sid: Optional[str] = None) -> None:
+    bot_sid = str(bot_sid or "").strip()
+    if bot_sid:
+        load_bot(bot_sid)
     _reset_roster_slot(target)
     target["ai"] = True
+    if bot_sid:
+        target["bot_sid"] = bot_sid
 
 
 def _set_roster_slot_human(target: Dict[str, Any], display_name: str) -> None:
@@ -207,7 +236,13 @@ def _set_roster_slot_human(target: Dict[str, Any], display_name: str) -> None:
 
 
 @public
-async def roster_set_slot(game_key: str, slot_key: str, state: str, display_name: Optional[str] = None) -> Dict[str, Any]:
+async def roster_set_slot(
+    game_key: str,
+    slot_key: str,
+    state: str,
+    display_name: Optional[str] = None,
+    bot_sid: Optional[str] = None,
+) -> Dict[str, Any]:
     """Set a roster slot to Empty, AI, or Human."""
     slot_key = str(slot_key or "").strip()
     if not slot_key:
@@ -226,16 +261,8 @@ async def roster_set_slot(game_key: str, slot_key: str, state: str, display_name
     if state_key == "empty":
         _set_roster_slot_empty(target)
     elif state_key == "ai":
-        _set_roster_slot_ai(target)
+        _set_roster_slot_ai(target, bot_sid)
     else:
-        session_key = atlantis.get_session_key()
-        caller_sid = atlantis.get_caller()
-        for row in rows:
-            if row is target:
-                continue
-            if row.get("session_key") == session_key or (caller_sid and row.get("sid") == caller_sid):
-                moved_slots.append((row, row.get("location") or None))
-                _set_roster_slot_empty(row)
         _set_roster_slot_human(target, str(display_name or ""))
 
     _write_game_roster(game_key, rows)
@@ -284,8 +311,6 @@ async def roster_bind(game_key: str, slot_key: str) -> Dict[str, Any]:
     rows = _load_game_roster(game_key)
     target = None
     for row in rows:
-        if row.get("session_key") == session_key and row.get("key") != slot_key:
-            raise RuntimeError(f"Session is already bound to slot {row.get('key')!r}")
         if row.get("key") == slot_key:
             target = row
 

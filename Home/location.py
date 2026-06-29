@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 
 from .common import _ensure_thumb, home_path, _require_str
+from .modal import modal_menu
 
 logger = logging.getLogger("dynamic_function")
 
@@ -157,6 +158,58 @@ def location_thumb(loc_name: str) -> str:
     return _ensure_thumb(image_path)
 
 
+def _image_data_uri(path: str) -> str:
+    if not path or not os.path.isfile(path):
+        return ""
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
+    with open(path, "rb") as image_file:
+        data = base64.b64encode(image_file.read()).decode("ascii")
+    return f"data:image/{mime};base64,{data}"
+
+
+def _location_picker_choices(current_location: str = "") -> List[Dict[str, Any]]:
+    choices: List[Dict[str, Any]] = []
+    current_location = str(current_location or "").strip()
+    for location in _leaf_location_keys():
+        label = load_location(location).get("displayName") or location
+        current_marker = "Current" if location == current_location else ""
+        thumb = _image_data_uri(location_thumb(location))
+        choices.append({
+            "id": location,
+            "text": f"{label}{' (current)' if current_marker else ''}",
+            "location": location,
+            "columns": [
+                {"type": "image", "src": thumb, "alt": str(label)},
+                str(label),
+                current_marker,
+            ],
+            "column_headers": ["", "Location", ""],
+        })
+    return choices
+
+
+async def _location_pick_dialog(
+    *,
+    title: str = "Location",
+    heading: str = "Select location",
+    current_location: str = "",
+) -> Optional[str]:
+    choices = _location_picker_choices(current_location)
+    if not choices:
+        raise RuntimeError("No standable locations found")
+    choice = await modal_menu(
+        choices,
+        title=title,
+        heading=heading,
+        width_ratio=0.5,
+    )
+    if choice is None:
+        return None
+    location = str(choice.get("location") or choice.get("id") or "").strip()
+    return location or None
+
+
 def location_image_path(name: str) -> str:
     """Absolute path to a location's full background image.
 
@@ -266,6 +319,12 @@ async def location_list() -> List[Dict[str, str]]:
         "connects_to": {"type": "pre"},
     })
     return locations
+
+
+@visible
+async def location_pick() -> Optional[str]:
+    """Pick a standable location using the standard location picker dialog."""
+    return await _location_pick_dialog()
 
 
 

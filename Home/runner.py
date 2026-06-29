@@ -13,13 +13,11 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
-from .bot import bot_entry_location, bot_roster_name
-from .camera import _camera_follow_slot
+from .bot import _bot_pick_dialog, bot_image_data
 from .modal import _modal_panel_css, modal_menu, modal_string
 from .game import (
     GAME_STATE_STOPPED,
     _caller_is_member,
-    _caller_session_keys,
     _game_create,
     _game_read,
     _game_read_from_dir,
@@ -27,25 +25,14 @@ from .game import (
     _game_update,
     add_caller_membership,
     game_dir,
+    game_find_current,
     game_start,
     require_membership,
 )
+from .camera import _load_cameras
+from .location import _leaf_location_keys, _location_pick_dialog, load_location
+from .roster import _caller_roster_row, _roster_row_label, _roster_row_state
 from .user import user_background_default
-
-
-def _roster_slot_state(row: Dict[str, Any]) -> str:
-    return str(row.get("state") or "").strip()
-
-
-def _roster_slot_name(row: Dict[str, Any]) -> str:
-    state = _roster_slot_state(row)
-    if state == "Empty":
-        return "-"
-    if state == "AI":
-        bot_sid = str(row.get("bot_sid") or "").strip()
-        if bot_sid:
-            return str(row.get("displayName") or bot_roster_name(bot_sid) or bot_sid)
-    return str(row.get("displayName") or row.get("sid") or row.get("bot_sid") or "-")
 
 
 async def _warn_empty_roster() -> None:
@@ -69,17 +56,24 @@ async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Opti
         slot_key = str(row.get("key") or "").strip()
         if not slot_key:
             continue
-        state = _roster_slot_state(row)
+        state = _roster_row_state(row)
         state_value = state.lower()
-        display_name = "" if state == "Empty" else _roster_slot_name(row)
+        display_name = "" if state == "Empty" else _roster_row_label(row)
+        bot_sid = str(row.get("bot_sid") or "").strip()
+        bot_image = bot_image_data(bot_sid) if bot_sid else ""
+        bot_img_html = (
+            f'<img class="roster-bot-thumb" src="{html_lib.escape(bot_image, quote=True)}" alt="{html_lib.escape(bot_sid, quote=True)}">'
+            if bot_image else ""
+        )
         select_options = "".join(
             f'<option value="{value}"{" selected" if label == state else ""}>{label}</option>'
             for value, label in state_options
         )
         rows_html.append(f"""
-      <tr class="roster-row" data-slot-key="{html_lib.escape(slot_key, quote=True)}" data-state="{state_value}" data-name="{html_lib.escape(display_name, quote=True)}">
+      <tr class="roster-row" data-slot-key="{html_lib.escape(slot_key, quote=True)}" data-bot-sid="{html_lib.escape(bot_sid, quote=True)}" data-state="{state_value}" data-name="{html_lib.escape(display_name, quote=True)}">
+        <td class="roster-bot-image">{bot_img_html}</td>
         <td>{html_lib.escape(slot_key)}</td>
-        <td>{html_lib.escape(str(row.get("bot_sid") or ""))}</td>
+        <td>{html_lib.escape(bot_sid)}</td>
         <td class="roster-state">
         <select aria-label="{html_lib.escape(slot_key, quote=True)} state">
           {select_options}
@@ -166,6 +160,18 @@ async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Opti
   #rosteredit-{uid} .roster-row {{
     height: 42px;
   }}
+  #rosteredit-{uid} .roster-bot-image {{
+    width: 48px;
+    min-width: 48px;
+    padding: 0 8px;
+  }}
+  #rosteredit-{uid} .roster-bot-thumb {{
+    display: block;
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 4px;
+  }}
   #rosteredit-{uid} .roster-empty-name {{
     color: rgba(255, 250, 240, 0.52);
   }}
@@ -238,8 +244,9 @@ async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Opti
   <table class="roster-table">
     <thead>
       <tr>
+        <th scope="col"></th>
         <th scope="col">Slot</th>
-        <th scope="col">SID</th>
+        <th scope="col">Bot</th>
         <th scope="col">State</th>
         <th scope="col">Name</th>
       </tr>
@@ -454,6 +461,7 @@ async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Opti
           roster_modal_id: {roster_modal_id_js},
           slot_key: row ? (row.getAttribute("data-slot-key") || "") : "",
           state: select.value || "",
+          bot_sid: row ? (row.getAttribute("data-bot-sid") || "") : "",
           display_name: ""
         }});
       }});
@@ -507,6 +515,7 @@ async def roster_edit_modal_change(
     slot_key: str,
     state: str,
     display_name: Optional[str] = None,
+    bot_sid: Optional[str] = None,
 ) -> None:
     """Handle a roster editor state dropdown change."""
     await _settle_roster_edit_modal(
@@ -516,6 +525,7 @@ async def roster_edit_modal_change(
             "slot_key": str(slot_key or "").strip(),
             "state": str(state or "").strip().lower(),
             "display_name": str(display_name or "").strip(),
+            "bot_sid": str(bot_sid or "").strip(),
         },
     )
 
@@ -532,21 +542,6 @@ async def roster_edit_modal_ok(roster_modal_id: str) -> None:
 async def roster_edit_modal_cancel(roster_modal_id: str) -> None:
     """Handle closing the roster editor without an explicit action."""
     await _settle_roster_edit_modal(roster_modal_id, None)
-
-
-def _caller_roster_row(roster: list, session_key: str, caller_sid: Optional[str]) -> Optional[Dict[str, Any]]:
-    row = next((row for row in roster if row.get("session_key") == session_key), None)
-    if row is not None:
-        return row
-    if caller_sid:
-        return next(
-            (
-                row for row in roster
-                if row.get("state") == "Human" and row.get("sid") == caller_sid
-            ),
-            None,
-        )
-    return None
 
 
 @visible
@@ -688,19 +683,19 @@ async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
 @visible
 async def roster_edit(
     heading: str = "Edit Roster",
-) -> None:
+) -> bool:
     while True:
         roster = await atlantis.client_command("@roster_list")
         modal_result = await _roster_edit_modal(roster, heading=heading)
         if modal_result is None:
-            return None
+            return False
 
         if modal_result.get("action") == "ok":
-            return None
+            return True
 
         slot_key = str(modal_result.get("slot_key") or "").strip()
         if not slot_key:
-            return None
+            return False
 
         state = str(modal_result.get("state") or "").strip().lower()
         if state not in {"empty", "ai", "human"}:
@@ -711,6 +706,15 @@ async def roster_edit(
             display_name = str(modal_result.get("display_name") or "").strip()
             if not display_name:
                 continue
+        bot_sid = None
+        if state == "ai":
+            bot_sid = await _bot_pick_dialog(
+                title="Bot",
+                heading="Select bot",
+                current_bot_sid=str(modal_result.get("bot_sid") or ""),
+            )
+            if not bot_sid:
+                continue
 
         await atlantis.client_command(
             "@roster_set_slot",
@@ -718,8 +722,134 @@ async def roster_edit(
                 "slot_key": slot_key,
                 "state": state,
                 "display_name": display_name,
+                "bot_sid": bot_sid,
             },
         )
+
+
+def _camera_current_target(game_key: str) -> Dict[str, str]:
+    terminal_key = atlantis.get_terminal_key()
+    if not terminal_key:
+        return {}
+    entry = _load_cameras(game_key).get(terminal_key)
+    if not isinstance(entry, dict):
+        return {}
+    target_type = str(entry.get("target_type") or "").strip()
+    if target_type == "location":
+        return {
+            "target_type": "location",
+            "location": str(entry.get("location") or "").strip(),
+        }
+    if target_type == "slot":
+        return {
+            "target_type": "slot",
+            "slot_key": str(entry.get("slot_key") or "").strip(),
+        }
+    return {}
+
+
+def _camera_current_heading(current: Dict[str, str]) -> str:
+    target_type = current.get("target_type")
+    if target_type == "location" and current.get("location"):
+        try:
+            label = load_location(current["location"]).get("displayName") or current["location"]
+        except ValueError:
+            label = current["location"]
+        return f"Current: location - {label}"
+    if target_type == "slot" and current.get("slot_key"):
+        return f"Current: roster slot - {current['slot_key']}"
+    return "No camera set"
+
+
+def _camera_slot_choices(roster: list, current: Dict[str, str]) -> list[Dict[str, str]]:
+    choices = []
+    current_slot = current.get("slot_key") if current.get("target_type") == "slot" else ""
+    for row in roster:
+        slot_key = str(row.get("key") or "").strip()
+        if not slot_key:
+            continue
+        name = _roster_row_label(row)
+        label = slot_key if not name or name == "-" else f"{slot_key} - {name}"
+        current_marker = "Current" if slot_key == current_slot else ""
+        choices.append({
+            "id": slot_key,
+            "text": f"{label}{' (current)' if current_marker else ''}",
+            "slot_key": slot_key,
+            "columns": [label, current_marker],
+            "column_headers": ["Roster slot", ""],
+        })
+    return choices
+
+
+async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = None) -> bool:
+    game_key = str(game_key or await game_find_current()).strip()
+    roster_rows = roster if roster is not None else await atlantis.client_command("@roster_list")
+    current = _camera_current_target(game_key)
+    current_heading = _camera_current_heading(current)
+    has_locations = bool(_leaf_location_keys())
+    slot_choices = _camera_slot_choices(roster_rows, current)
+    if not has_locations and not slot_choices:
+        raise RuntimeError("No camera targets found")
+
+    mode = ""
+    if has_locations and slot_choices:
+        mode_choice = await modal_menu(
+            [
+                {
+                    "id": "location",
+                    "text": "Location" + (" (current)" if current.get("target_type") == "location" else ""),
+                },
+                {
+                    "id": "slot",
+                    "text": "Roster slot" + (" (current)" if current.get("target_type") == "slot" else ""),
+                },
+            ],
+            title="Camera",
+            heading=f"Lock camera to - {current_heading}",
+            width_ratio=0.5,
+        )
+        if mode_choice is None:
+            return False
+        mode = str(mode_choice.get("id") or "").strip().lower()
+    elif has_locations:
+        mode = "location"
+    else:
+        mode = "slot"
+
+    if mode == "location":
+        current_location = ""
+        if current.get("target_type") == "location":
+            current_location = str(current.get("location") or "")
+        location = await _location_pick_dialog(
+            title="Location",
+            heading="Select location",
+            current_location=current_location,
+        )
+        if not location:
+            return False
+        await atlantis.client_command("@camera_bind", {"location": location})
+        return True
+
+    if mode == "slot":
+        choice = await modal_menu(
+            slot_choices,
+            title="Camera",
+            heading=current_heading,
+            width_ratio=0.5,
+        )
+        if choice is None:
+            return False
+        slot_key = str(choice.get("slot_key") or choice.get("id") or "").strip()
+        if not slot_key:
+            return False
+        await atlantis.client_command("@camera_follow", {"slot_key": slot_key})
+        return True
+    raise ValueError(f"Unknown camera target mode: {mode!r}")
+
+
+@visible
+async def camera_edit() -> bool:
+    return await _camera_edit()
 
 
 @public
@@ -962,11 +1092,15 @@ async def game_init(game_key: str):
 
     bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
     if bound_row is None:
-        await roster_edit()
+        if not await roster_edit():
+            raise RuntimeError("Roster selection cancelled")
         roster = await atlantis.client_command("@roster_list")
         if roster and all(row.get("state") == "Empty" for row in roster):
             await _warn_empty_roster()
         bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
+
+    if not await _camera_edit(roster=roster, game_key=game_key):
+        raise RuntimeError("Camera selection cancelled")
 
     meta = _game_read_from_dir(data_dir)
     if (
@@ -982,17 +1116,8 @@ async def game_init(game_key: str):
             heading="Start the game?",
             width_ratio=0.5,
         )
+        if choice is None:
+            raise RuntimeError("Game start selection cancelled")
         if choice and choice.get("id") == "start":
             await game_start(game_key)
             meta = _game_read_from_dir(data_dir)
-
-    game_running = str(meta.get("state") or GAME_STATE_STOPPED).strip().lower() != GAME_STATE_STOPPED
-    if game_running and bound_row and not bound_row.get("cancelled") and not bound_row.get("location"):
-        location = bot_entry_location(bound_row["bot_sid"])
-        await atlantis.client_command(f"@roster_spawn {bound_row['key']} {location}")
-    if game_running and bound_row and not bound_row.get("cancelled"):
-        await _camera_follow_slot(
-            game_key,
-            bound_row["key"],
-            replace_session_keys=_caller_session_keys(meta, session_key),
-        )

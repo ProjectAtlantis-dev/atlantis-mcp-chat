@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Mapping, Optional, TypedDict
 
 from .common import _ensure_thumb, home_path, _require_str
 from .location import _leaf_location_keys
+from .modal import modal_menu
 
 logger = logging.getLogger("dynamic_function")
 
@@ -127,6 +128,82 @@ def _validate_default_location(bot_sid: str, location: str) -> None:
         )
 
 
+def bot_thumb(bot_sid: str) -> str:
+    """Return a thumbnail path for a bot portrait, if one exists."""
+    bot_data = _load_bot_json(bot_sid)
+    image_file = str(bot_data.get("image") or "").strip()
+    if not image_file:
+        return ""
+    image_path = os.path.join(_bots_dir(), bot_sid, image_file)
+    if not os.path.isfile(image_path):
+        return ""
+    return _ensure_thumb(image_path)
+
+
+def _image_data_uri(path: str) -> str:
+    if not path or not os.path.isfile(path):
+        return ""
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
+    with open(path, "rb") as image_file:
+        data = base64.b64encode(image_file.read()).decode("ascii")
+    return f"data:image/{mime};base64,{data}"
+
+
+def bot_image_data(bot_sid: str) -> str:
+    """Return a data URI for a bot portrait thumbnail, if one exists."""
+    return _image_data_uri(bot_thumb(bot_sid))
+
+
+def _bot_picker_choices(current_bot_sid: str = "") -> List[Dict[str, Any]]:
+    choices: List[Dict[str, Any]] = []
+    current_bot_sid = str(current_bot_sid or "").strip()
+    bots_dir = _bots_dir()
+    if not os.path.isdir(bots_dir):
+        return choices
+    for bot_sid in sorted(os.listdir(bots_dir)):
+        entry_dir = os.path.join(bots_dir, bot_sid)
+        if not os.path.isdir(entry_dir) or bot_sid.startswith(".") or bot_sid == "__pycache__":
+            continue
+        bot_data = _load_bot_json(bot_sid)
+        display_name = str(bot_data.get("displayName") or bot_sid)
+        current_marker = "Current" if bot_sid == current_bot_sid else ""
+        choices.append({
+            "id": bot_sid,
+            "text": f"{display_name}{' (current)' if current_marker else ''}",
+            "bot_sid": bot_sid,
+            "columns": [
+                {"type": "image", "src": bot_image_data(bot_sid), "alt": display_name},
+                display_name,
+                bot_sid,
+                current_marker,
+            ],
+            "column_headers": ["", "Bot", "SID", ""],
+        })
+    return choices
+
+
+async def _bot_pick_dialog(
+    *,
+    title: str = "Bot",
+    heading: str = "Select bot",
+    current_bot_sid: str = "",
+) -> Optional[str]:
+    choices = _bot_picker_choices(current_bot_sid)
+    if not choices:
+        raise RuntimeError("No bots found")
+    choice = await modal_menu(
+        choices,
+        title=title,
+        heading=heading,
+        width_ratio=0.5,
+    )
+    if choice is None:
+        return None
+    bot_sid = str(choice.get("bot_sid") or choice.get("id") or "").strip()
+    return bot_sid or None
+
+
 def _bot_rows() -> List[Dict[str, Any]]:
     """Pure data: list available bots. No client side effects."""
     bots_dir = _bots_dir()
@@ -150,23 +227,10 @@ def _bot_rows() -> List[Dict[str, Any]]:
         default_location = str(bot_data.get("defaultLocation", "") or "")
         _validate_default_location(entry, default_location)
 
-        image_data = ""
-        image_file = bot_data.get("image", "")
-        if image_file:
-            image_path = os.path.join(entry_dir, image_file)
-            if os.path.isfile(image_path):
-                thumb = _ensure_thumb(image_path)
-                if thumb:
-                    ext = os.path.splitext(thumb)[1].lower().lstrip(".")
-                    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
-                    with open(thumb, "rb") as img:
-                        b64 = base64.b64encode(img.read()).decode("ascii")
-                    image_data = f"data:image/{mime};base64,{b64}"
-
         bots.append({
             "sid": entry,
             "displayName": bot_data.get("displayName", entry),
-            "image": image_data,
+            "image": bot_image_data(entry),
             "defaultLocation": default_location,
             "prompt": render_bot_prompt(entry),
             "model": model_label,
@@ -183,6 +247,12 @@ async def bot_list() -> List[Dict[str, Any]]:
         "prompt": {"type": "markdown", "maxWidth": "80ch"},
     })
     return bots
+
+
+@visible
+async def bot_pick() -> Optional[str]:
+    """Pick a bot using the standard bot picker dialog."""
+    return await _bot_pick_dialog()
 
 
 @public
