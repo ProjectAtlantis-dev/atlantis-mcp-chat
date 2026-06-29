@@ -23,9 +23,9 @@ async def first_menu():
         ],
         title="Home",
         heading="Where do you want to go?",
-        width_ratio=0.5,
     )
     if choice is None:
+        await atlantis.client_log("Home menu cancelled.")
         return None
 
     script_folder = atlantis.get_script_folder()
@@ -51,7 +51,13 @@ async def first_menu():
         await atlantis.client_command("/script", {"commands":["ls"]})
 
     if choice_id == "bots":
-        return await game_find_or_create()
+        try:
+            return await game_find_or_create()
+        except RuntimeError as exc:
+            if "cancelled" not in str(exc).lower():
+                raise
+            await atlantis.client_log(str(exc))
+            return None
 
 
 

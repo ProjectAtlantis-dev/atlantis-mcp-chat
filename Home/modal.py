@@ -322,7 +322,6 @@ async def modal_menu(
     choices: List[Dict[str, Any]],
     title: str = "",
     heading: str = "",
-    width_ratio: float = 0.67,
 ) -> Optional[Dict[str, Any]]:
     """Pop up a modal menu and return the selected choice object.
 

@@ -40,7 +40,6 @@ async def _warn_empty_roster() -> None:
         [{"id": "ok", "text": "OK"}],
         title="Roster",
         heading="All roster slots are empty",
-        width_ratio=0.5,
     )
 
 
@@ -672,7 +671,6 @@ async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
         choices,
         title="Scene",
         heading=heading,
-        width_ratio=0.5,
     )
     if choice is None:
         return None
@@ -714,7 +712,7 @@ async def roster_edit(
                 current_bot_sid=str(modal_result.get("bot_sid") or ""),
             )
             if not bot_sid:
-                continue
+                return False
 
         await atlantis.client_command(
             "@roster_set_slot",
@@ -806,7 +804,6 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
             ],
             title="Camera",
             heading=f"Lock camera to - {current_heading}",
-            width_ratio=0.5,
         )
         if mode_choice is None:
             return False
@@ -835,7 +832,6 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
             slot_choices,
             title="Camera",
             heading=current_heading,
-            width_ratio=0.5,
         )
         if choice is None:
             return False
@@ -883,15 +879,6 @@ async def game_new() -> Dict[str, Any]:
         "game_key": game_key,
         "join_password": join_password,
     }
-
-
-async def _game_create_and_enter(log_init: bool = False) -> Dict[str, Any]:
-    keys = await game_new()
-    await atlantis.client_command("/cursor join", keys)
-    if log_init:
-        await atlantis.client_log(f"game_init game_key: {keys['game_key']!r}")
-    await game_init(keys["game_key"])
-    return keys
 
 
 @public
@@ -949,7 +936,6 @@ async def _game_password_error(game_key: str) -> None:
         [{"id": "ok", "text": "OK"}],
         title=f"Game {game_key}",
         heading="Incorrect password",
-        width_ratio=0.4,
     )
 
 
@@ -1014,7 +1000,6 @@ async def game_find_or_create() -> str:
         choices,
         title="Game Action",
         heading="What do you want to do?",
-        width_ratio=0.5,
     )
     if choice is None:
         raise RuntimeError("Game selection cancelled")
@@ -1022,7 +1007,13 @@ async def game_find_or_create() -> str:
     await atlantis.client_log(f"game_find_or_create selected: {choice.get('id')!r}")
 
     if choice.get("id") == "create":
-        return (await _game_create_and_enter())["game_key"]
+        keys = await game_new()
+        game_key = str(keys.get("game_key") or "").strip()
+        if not game_key:
+            raise RuntimeError("Game create did not return a game_key")
+        await atlantis.client_command("/cursor join", keys)
+        await game_init(game_key)
+        return game_key
 
     if choice.get("id") == "join":
         game_key = await _game_pick(
@@ -1114,7 +1105,6 @@ async def game_init(game_key: str):
             ],
             title="Game",
             heading="Start the game?",
-            width_ratio=0.5,
         )
         if choice is None:
             raise RuntimeError("Game start selection cancelled")

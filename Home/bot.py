@@ -196,7 +196,6 @@ async def _bot_pick_dialog(
         choices,
         title=title,
         heading=heading,
-        width_ratio=0.5,
     )
     if choice is None:
         return None
