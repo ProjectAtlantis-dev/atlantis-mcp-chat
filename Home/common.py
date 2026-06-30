@@ -5,7 +5,11 @@ import logging
 import os
 from typing import Any, Dict
 
+import atlantis
+
 logger = logging.getLogger("dynamic_function")
+
+CHAT_DEFAULT_BG_ALIGN = "75%"
 
 # ---------------------------------------------------------------------------
 # Paths & JSON I/O
@@ -14,6 +18,19 @@ logger = logging.getLogger("dynamic_function")
 def home_path(*parts: str) -> str:
     """Resolve a path under python-server/dynamic_functions/."""
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *parts))
+
+
+def _chat_default_bg_path() -> str:
+    return os.path.join(os.path.dirname(__file__), "builder.jpg")
+
+
+@public
+async def app_bg_default() -> None:
+    """Set the chat default background image."""
+    await atlantis.set_background(
+        _chat_default_bg_path(),
+        vertical_align=CHAT_DEFAULT_BG_ALIGN,
+    )
 
 
 def _read_json(path: str, default=None):

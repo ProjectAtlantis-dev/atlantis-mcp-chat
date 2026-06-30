@@ -147,6 +147,11 @@ async def camera_bind(game_key: str, location: str) -> Dict[str, str]:
     terminal_key = atlantis.get_terminal_key()
     if not terminal_key:
         raise RuntimeError("No terminal key in this call context")
+    await atlantis.client_log(
+        "camera_bind context "
+        f"game_key={game_key!r} session_key={atlantis.get_session_key()!r} "
+        f"terminal_key={terminal_key!r} location={location!r}"
+    )
     loc = _load_location(location)
     if not loc:
         raise ValueError(f"Unknown location: {location}")
@@ -161,6 +166,9 @@ async def camera_bind(game_key: str, location: str) -> Dict[str, str]:
         "updated_at": _now_iso(),
     }
     _save_cameras(game_key, cameras)
+    await atlantis.client_log(
+        f"camera_bind saved terminal_key={terminal_key!r} camera_keys={sorted(cameras.keys())!r}"
+    )
 
     await _paint_location(location)
     await _render_cameras(game_key)
@@ -177,6 +185,11 @@ async def _camera_follow_slot(
     terminal_key = atlantis.get_terminal_key()
     if not terminal_key:
         raise RuntimeError("No terminal key in this call context")
+    await atlantis.client_log(
+        "camera_follow context "
+        f"game_key={game_key!r} session_key={atlantis.get_session_key()!r} "
+        f"terminal_key={terminal_key!r} slot_key={slot_key!r}"
+    )
 
     slot_key = str(slot_key).strip()
     location = _slot_location(game_key, slot_key)
@@ -215,6 +228,9 @@ async def _camera_follow_slot(
 
     if changed:
         _save_cameras(game_key, cameras)
+        await atlantis.client_log(
+            f"camera_follow saved terminal_key={terminal_key!r} camera_keys={sorted(cameras.keys())!r}"
+        )
 
     await atlantis.client_log(
         f"camera_follow terminal={terminal_key!r} slot={slot_key!r} location={location!r}"

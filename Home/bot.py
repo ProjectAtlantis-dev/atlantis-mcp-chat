@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Mapping, Optional, TypedDict
 
 from .common import _ensure_thumb, home_path, _require_str
 from .location import _leaf_location_keys
-from .modal import modal_menu
+from dynamic_functions.Home.modal import modal_menu
 
 logger = logging.getLogger("dynamic_function")
 

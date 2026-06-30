@@ -9,7 +9,7 @@ from .bot import bot_roster_name, load_bot
 from .common import _read_json, _write_json
 from .game import require_membership
 from .location import _connects_to, _require_leaf, load_location
-from .modal import modal_string
+from dynamic_functions.Home.modal import modal_string
 from .scene import _load_scene, _scene_name, _scene_names
 
 

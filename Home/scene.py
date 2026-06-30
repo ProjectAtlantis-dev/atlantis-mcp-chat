@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from .common import home_path, _read_json
 from .bot import load_bot
-from .modal import modal_radio
+from dynamic_functions.Home.modal import modal_radio
 
 logger = logging.getLogger("dynamic_function")
 

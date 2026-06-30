@@ -4,7 +4,7 @@ from pathlib import Path
 
 import atlantis
 
-from .modal import modal_menu
+from dynamic_functions.Home.modal import modal_menu
 from .runner import game_find_or_create
 
 # % first_menu
@@ -70,15 +70,18 @@ async def homepage() -> dict:
     script_folder = atlantis.get_script_folder()
     if not script_folder:
         raise RuntimeError("Cannot determine homepage script folder")
+    parts = script_folder.strip("/").split("/")
+    home_folder = "/" + "/".join(parts[:2] + ["Home"])
 
     return {
         "commands": [
             f"/cd {script_folder}",
+            f"/path unshift {home_folder}",
             f"/path unshift {script_folder}",
             "/terminal on",
             "app on",
             "term_default",
-            "user_background_default",
+            "app_bg_default",
             "first_menu"
         ],
     }

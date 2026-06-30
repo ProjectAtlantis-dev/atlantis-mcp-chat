@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from .common import home_path, _read_json, _write_json
-from .modal import modal_menu
+from dynamic_functions.Home.modal import modal_menu
 
 
 GAME_STATE_RUNNING = "running"

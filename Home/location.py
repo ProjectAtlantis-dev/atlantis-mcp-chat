@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 
 from .common import _ensure_thumb, home_path, _require_str
-from .modal import modal_menu
+from dynamic_functions.Home.modal import modal_menu
 
 logger = logging.getLogger("dynamic_function")
 
