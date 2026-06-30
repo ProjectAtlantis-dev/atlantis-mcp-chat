@@ -8,6 +8,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 
+class ModalGoBack(RuntimeError):
+    """Raised when the user chooses Go back in a modal flow."""
+
+
 def _modal_shell_css(
     selector: str,
     *,
@@ -364,6 +368,7 @@ async def modal_confirm(
     loop = asyncio.get_running_loop()
     future = loop.create_future()
     atlantis.session_shared.set(f"{modal_confirm_id}:future", future)
+    atlantis.session_shared.set(f"{modal_confirm_id}:cancel_raises", bool(cancel_label_text))
     html = f"""
 <style>
 {_modal_panel_css(
@@ -526,6 +531,7 @@ async def modal_confirm(
     finally:
         atlantis.session_shared.remove(f"{modal_confirm_id}:future")
         atlantis.session_shared.remove(f"{modal_confirm_id}:modal_id")
+        atlantis.session_shared.remove(f"{modal_confirm_id}:cancel_raises")
 
 
 @public
@@ -537,7 +543,7 @@ async def modal_radio(
     current_id: str = "",
     ok_label: str = "Continue",
     cancel_label: str = "Go back",
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Pop up a radio-choice modal and return the selected choice object."""
     choice_by_id = _validated_modal_choices(choices)
     current_id = str(current_id or "").strip()
@@ -1240,6 +1246,7 @@ async def modal_string_cancel(modal_string_id: str) -> None:
 async def _settle_modal_confirm(modal_confirm_id: str, result: bool) -> None:
     modal_key = f"{modal_confirm_id}:modal_id"
     future_key = f"{modal_confirm_id}:future"
+    cancel_raises_key = f"{modal_confirm_id}:cancel_raises"
     modal_id = atlantis.session_shared.get(modal_key)
     if modal_id:
         try:
@@ -1249,7 +1256,10 @@ async def _settle_modal_confirm(modal_confirm_id: str, result: bool) -> None:
         atlantis.session_shared.remove(modal_key)
     future = atlantis.session_shared.get(future_key)
     if future is not None and not future.done():
-        future.set_result(result)
+        if result is False and atlantis.session_shared.get(cancel_raises_key):
+            future.set_exception(ModalGoBack("Modal flow cancelled by Go back"))
+        else:
+            future.set_result(result)
 
 
 @public
@@ -1306,7 +1316,7 @@ async def modal_radio_cancel(modal_radio_id: str, choice_id: str = "") -> None:
         atlantis.session_shared.remove(modal_key)
     future = atlantis.session_shared.get(future_key)
     if future is not None and not future.done():
-        future.set_result(None)
+        future.set_exception(ModalGoBack("Modal flow cancelled by Go back"))
 
 
 @public

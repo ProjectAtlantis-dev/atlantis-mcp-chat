@@ -108,8 +108,6 @@ async def _scene_pick_dialog(
         title=title,
         heading=heading,
     )
-    if choice is None:
-        return None
     scene = str(choice.get("scene") or choice.get("id") or "").strip()
     return scene or None
 

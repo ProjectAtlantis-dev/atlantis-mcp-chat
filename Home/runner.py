@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 from .bot import _bot_pick_dialog, bot_image_data
-from .modal import _modal_panel_css, modal_confirm, modal_menu, modal_radio, modal_string
+from .modal import ModalGoBack, _modal_panel_css, modal_confirm, modal_menu, modal_radio, modal_string
 from .game import (
     GAME_STATE_STOPPED,
     _caller_is_member,
@@ -31,7 +31,7 @@ from .game import (
 )
 from .camera import _load_cameras
 from .location import _leaf_location_keys, _location_pick_dialog, load_location
-from .roster import _caller_roster_row, _roster_row_label, _roster_row_state
+from .roster import _roster_row_label, _roster_row_state
 from .scene import _scene_pick_dialog
 from .user import user_background_default
 
@@ -720,65 +720,72 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
     if not has_locations and not slot_choices:
         raise RuntimeError("No camera targets found")
 
-    mode = ""
-    if has_locations and slot_choices:
-        current_target_type = str(current.get("target_type") or "")
-        current_mode = current_target_type if current_target_type in {"location", "slot"} else "location"
-        mode_choice = await modal_radio(
-            [
-                {
-                    "id": "location",
-                    "text": "Location",
-                    "description": "Watch a fixed place in the scene.",
-                },
-                {
-                    "id": "slot",
-                    "text": "Roster slot",
-                    "description": "Follow a roster slot as it moves.",
-                },
-            ],
-            title="Camera",
-            heading=f"Lock camera to - {current_heading}",
-            current_id=current_mode,
-        )
-        if mode_choice is None:
-            return False
-        mode = str(mode_choice.get("id") or "").strip().lower()
-    elif has_locations:
-        mode = "location"
-    else:
-        mode = "slot"
+    while True:
+        mode = ""
+        if has_locations and slot_choices:
+            current_target_type = str(current.get("target_type") or "")
+            current_mode = current_target_type if current_target_type in {"location", "slot"} else "location"
+            try:
+                mode_choice = await modal_radio(
+                    [
+                        {
+                            "id": "location",
+                            "text": "Location",
+                            "description": "Watch a fixed place in the scene.",
+                        },
+                        {
+                            "id": "slot",
+                            "text": "Roster slot",
+                            "description": "Follow a roster slot as it moves.",
+                        },
+                    ],
+                    title="Camera",
+                    heading=f"Lock camera to - {current_heading}",
+                    current_id=current_mode,
+                )
+            except ModalGoBack:
+                return False
+            mode = str(mode_choice.get("id") or "").strip().lower()
+        elif has_locations:
+            mode = "location"
+        else:
+            mode = "slot"
 
-    if mode == "location":
-        current_location = ""
-        if current.get("target_type") == "location":
-            current_location = str(current.get("location") or "")
-        location = await _location_pick_dialog(
-            title="Location",
-            heading="Select location",
-            current_location=current_location,
-        )
-        if not location:
-            return False
-        await atlantis.client_command("@camera_bind", {"location": location})
-        return True
+        if mode == "location":
+            current_location = ""
+            if current.get("target_type") == "location":
+                current_location = str(current.get("location") or "")
+            location = await _location_pick_dialog(
+                title="Location",
+                heading="Select location",
+                current_location=current_location,
+            )
+            if not location:
+                if has_locations and slot_choices:
+                    continue
+                return False
+            await atlantis.client_command("@camera_bind", {"location": location})
+            return True
 
-    if mode == "slot":
-        current_slot = current.get("slot_key") if current.get("target_type") == "slot" else ""
-        choice = await modal_radio(
-            slot_choices,
-            title="Camera",
-            heading="Select roster slot",
-            current_id=str(current_slot or ""),
-        )
-        if choice is None:
-            return False
-        slot_key = str(choice.get("slot_key") or choice.get("id") or "").strip()
-        if not slot_key:
-            return False
-        await atlantis.client_command("@camera_follow", {"slot_key": slot_key})
-        return True
-    raise ValueError(f"Unknown camera target mode: {mode!r}")
+        if mode == "slot":
+            current_slot = current.get("slot_key") if current.get("target_type") == "slot" else ""
+            try:
+                choice = await modal_radio(
+                    slot_choices,
+                    title="Camera",
+                    heading="Select roster slot",
+                    current_id=str(current_slot or ""),
+                )
+            except ModalGoBack:
+                if has_locations and slot_choices:
+                    continue
+                return False
+            slot_key = str(choice.get("slot_key") or choice.get("id") or "").strip()
+            if not slot_key:
+                return False
+            await atlantis.client_command("@camera_follow", {"slot_key": slot_key})
+            return True
+        raise ValueError(f"Unknown camera target mode: {mode!r}")
 
 
 @visible
@@ -1019,14 +1026,11 @@ async def game_init(game_key: str):
         roster = await atlantis.client_command(f"@roster_create {scene}")
         await atlantis.client_log(f"game scene: {scene!r}")
 
-    bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
-    if bound_row is None:
-        if not await roster_edit():
-            raise RuntimeError("Roster selection cancelled")
-        roster = await atlantis.client_command("@roster_list")
-        if roster and all(row.get("state") == "Empty" for row in roster):
-            await _warn_empty_roster()
-        bound_row = _caller_roster_row(roster, session_key, atlantis.get_caller())
+    if not await roster_edit():
+        raise RuntimeError("Roster selection cancelled")
+    roster = await atlantis.client_command("@roster_list")
+    if roster and all(row.get("state") == "Empty" for row in roster):
+        await _warn_empty_roster()
 
     if not await _camera_edit(roster=roster, game_key=game_key):
         raise RuntimeError("Camera selection cancelled")
