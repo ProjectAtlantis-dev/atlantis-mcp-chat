@@ -57,8 +57,8 @@ async def game_overview(game_key: str) -> None:
 
     tables = []
     tables.append(_table("ent-game", "GAME", ["key", "roster_scene"], [[game_key, roster_scene]], dynamic=True))
-    tables.append(_table("ent-scene", "SCENE", ["name", "slots"],
-        [[s["name"], s["slots"]] for s in scene_rows]))
+    tables.append(_table("ent-scene", "SCENE", ["name", "slots", "description"],
+        [[s["name"], s["slots"], _trunc(s.get("description", ""))] for s in scene_rows]))
     tables.append(_table("ent-roster", "ROSTER", ["key", "bot_sid", "ai", "displayName", "sid", "location", "session_key", "bound_at", "spawned_at"],
         [[
             r.get("key", ""),

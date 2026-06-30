@@ -121,6 +121,9 @@ def _roster_rows() -> List[Dict[str, Any]]:
 
 
 def _roster_row_state(row: Dict[str, Any]) -> str:
+    state = str(row.get("state") or "").strip().lower()
+    if state in {"empty", "ai", "human"}:
+        return {"empty": "Empty", "ai": "AI", "human": "Human"}[state]
     if row.get("ai") is True:
         return "AI"
     if row.get("ai") is False or row.get("session_key") or row.get("sid"):

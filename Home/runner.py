@@ -5,7 +5,6 @@ the camera/roster views, so it may import all of them without a cycle."""
 import atlantis
 import asyncio
 import html as html_lib
-import humanize
 import json
 import os
 import uuid
@@ -14,11 +13,12 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 from .bot import _bot_pick_dialog, bot_image_data
-from .modal import _modal_panel_css, modal_menu, modal_string
+from .modal import _modal_panel_css, modal_confirm, modal_menu, modal_radio, modal_string
 from .game import (
     GAME_STATE_STOPPED,
     _caller_is_member,
     _game_create,
+    _game_pick_dialog,
     _game_read,
     _game_read_from_dir,
     _game_rows,
@@ -32,14 +32,15 @@ from .game import (
 from .camera import _load_cameras
 from .location import _leaf_location_keys, _location_pick_dialog, load_location
 from .roster import _caller_roster_row, _roster_row_label, _roster_row_state
+from .scene import _scene_pick_dialog
 from .user import user_background_default
 
 
 async def _warn_empty_roster() -> None:
-    await modal_menu(
-        [{"id": "ok", "text": "OK"}],
+    await modal_confirm(
+        "All roster slots are empty",
         title="Roster",
-        heading="All roster slots are empty",
+        cancel_label="",
     )
 
 
@@ -256,7 +257,7 @@ async def _roster_edit_modal(roster: list, heading: str = "Edit Roster") -> Opti
   </table>
   <div id="roster-error-{uid}" class="roster-error" aria-live="polite"></div>
   <div class="roster-actions">
-    <button type="button" class="roster-ok">OK</button>
+    <button type="button" class="roster-ok">Continue</button>
   </div>
 </section>
 """
@@ -532,7 +533,7 @@ async def roster_edit_modal_change(
 @public
 @visible
 async def roster_edit_modal_ok(roster_modal_id: str) -> None:
-    """Handle the roster editor OK button."""
+    """Handle the roster editor continue button."""
     await _settle_roster_edit_modal(roster_modal_id, {"action": "ok"})
 
 
@@ -589,97 +590,7 @@ def _game_window_redirect_url(game_key: str) -> Optional[str]:
     return f"chat.html?{urlencode(query)}"
 
 
-def _format_game_menu_age(value: Any) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return "Unknown"
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return raw
-    return humanize.naturaltime(datetime.now() - parsed)
-
-
-@visible
-async def _game_pick(
-    games: Optional[list] = None,
-    heading: str = "Choose a game",
-) -> Optional[str]:
-    if games is None:
-        games = _game_rows()
-    games = sorted(games, key=lambda game: str(game.get("created") or ""), reverse=True)
-    if not games:
-        raise RuntimeError("No existing games found")
-
-    choices = []
-    for game in games:
-        game_key = str(game.get("game_key", "")).strip()
-        if not game_key:
-            continue
-        user_cnt = game.get("user_cnt")
-        choices.append({
-            "id": game_key,
-            "text": game_key[:4],
-            "columns": [
-                game_key[:4],
-                _format_game_menu_age(game.get("created")),
-                str(game.get("owner") or "Unknown owner"),
-                str(game.get("roster_scene") or "No scene"),
-                str(user_cnt) if isinstance(user_cnt, int) else "-",
-            ],
-            "column_headers": ["Key", "Started", "Owner", "Scene", "Players"],
-            "game_key": game_key,
-        })
-
-    if not choices:
-        raise RuntimeError("No existing games found")
-
-    choice = await modal_menu(
-        choices,
-        title="Game",
-        heading=heading,
-    )
-    if choice is None:
-        return None
-    game_key = str(choice.get("game_key") or choice.get("id") or "").strip()
-    if not game_key:
-        return None
-    return game_key
-
-
-async def _game_pick_scene(heading: str = "Choose a scene") -> Optional[str]:
-    await atlantis.client_log("Getting scenes")
-    scenes = await atlantis.client_command("@scene_list")
-    if not scenes:
-        raise RuntimeError("No scenes found")
-
-    choices = []
-    for scene in scenes:
-        scene_name = str(scene or "").strip()
-        if not scene_name:
-            continue
-        choices.append({
-            "id": scene_name,
-            "text": scene_name,
-            "scene": scene_name,
-        })
-
-    if not choices:
-        raise RuntimeError("No scenes found")
-
-    choice = await modal_menu(
-        choices,
-        title="Scene",
-        heading=heading,
-    )
-    if choice is None:
-        return None
-
-    scene = str(choice.get("scene") or choice.get("id") or "").strip()
-    return scene or None
-
-@visible
-async def roster_edit(
+async def _roster_edit(
     heading: str = "Edit Roster",
 ) -> bool:
     while True:
@@ -725,6 +636,11 @@ async def roster_edit(
         )
 
 
+@visible
+async def roster_edit() -> bool:
+    return await _roster_edit()
+
+
 def _camera_current_target(game_key: str) -> Dict[str, str]:
     terminal_key = atlantis.get_terminal_key()
     if not terminal_key:
@@ -766,15 +682,30 @@ def _camera_slot_choices(roster: list, current: Dict[str, str]) -> list[Dict[str
         slot_key = str(row.get("key") or "").strip()
         if not slot_key:
             continue
+        state = _roster_row_state(row)
         name = _roster_row_label(row)
-        label = slot_key if not name or name == "-" else f"{slot_key} - {name}"
+        label = slot_key
         current_marker = "Current" if slot_key == current_slot else ""
+        details = [state]
+        if name and name != "-":
+            details.append(name)
+        bot_sid = str(row.get("bot_sid") or "").strip()
+        if bot_sid and bot_sid not in details:
+            details.append(bot_sid)
+        location = str(row.get("location") or "").strip()
+        if location:
+            try:
+                location_label = load_location(location).get("displayName") or location
+            except ValueError:
+                location_label = location
+            details.append(f"at {location_label}")
+        if current_marker:
+            details.append(current_marker.lower())
         choices.append({
             "id": slot_key,
-            "text": f"{label}{' (current)' if current_marker else ''}",
+            "text": label,
+            "description": " - ".join(details),
             "slot_key": slot_key,
-            "columns": [label, current_marker],
-            "column_headers": ["Roster slot", ""],
         })
     return choices
 
@@ -791,19 +722,24 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
 
     mode = ""
     if has_locations and slot_choices:
-        mode_choice = await modal_menu(
+        current_target_type = str(current.get("target_type") or "")
+        current_mode = current_target_type if current_target_type in {"location", "slot"} else "location"
+        mode_choice = await modal_radio(
             [
                 {
                     "id": "location",
-                    "text": "Location" + (" (current)" if current.get("target_type") == "location" else ""),
+                    "text": "Location",
+                    "description": "Watch a fixed place in the scene.",
                 },
                 {
                     "id": "slot",
-                    "text": "Roster slot" + (" (current)" if current.get("target_type") == "slot" else ""),
+                    "text": "Roster slot",
+                    "description": "Follow a roster slot as it moves.",
                 },
             ],
             title="Camera",
             heading=f"Lock camera to - {current_heading}",
+            current_id=current_mode,
         )
         if mode_choice is None:
             return False
@@ -828,10 +764,12 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
         return True
 
     if mode == "slot":
-        choice = await modal_menu(
+        current_slot = current.get("slot_key") if current.get("target_type") == "slot" else ""
+        choice = await modal_radio(
             slot_choices,
             title="Camera",
-            heading=current_heading,
+            heading="Select roster slot",
+            current_id=str(current_slot or ""),
         )
         if choice is None:
             return False
@@ -932,10 +870,10 @@ async def _game_join_or_prompt(game_key: str, meta: Dict[str, Any]) -> Dict[str,
 
 @visible
 async def _game_password_error(game_key: str) -> None:
-    await modal_menu(
-        [{"id": "ok", "text": "OK"}],
+    await modal_confirm(
+        "Incorrect password",
         title=f"Game {game_key}",
-        heading="Incorrect password",
+        cancel_label="",
     )
 
 
@@ -1016,7 +954,7 @@ async def game_find_or_create() -> str:
         return game_key
 
     if choice.get("id") == "join":
-        game_key = await _game_pick(
+        game_key = await _game_pick_dialog(
             games=joinable_games,
             heading="Choose a game to join",
         )
@@ -1032,7 +970,7 @@ async def game_find_or_create() -> str:
         return game_key
 
     if choice.get("id") == "resume":
-        game_key = await _game_pick(games=resumable_games, heading="Choose a game to resume")
+        game_key = await _game_pick_dialog(games=resumable_games, heading="Choose a game to resume")
         if not game_key:
             raise RuntimeError("Game selection cancelled")
         return await _game_resume(game_key)
@@ -1075,7 +1013,7 @@ async def game_init(game_key: str):
     if os.path.isfile(roster_path):
         roster = await atlantis.client_command("@roster_list")
     else:
-        scene = await _game_pick_scene()
+        scene = await _scene_pick_dialog()
         if not scene:
             raise RuntimeError("Scene selection cancelled")
         roster = await atlantis.client_command(f"@roster_create {scene}")

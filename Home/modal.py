@@ -64,6 +64,26 @@ def _modal_panel_css(
 """
 
 
+def _validated_modal_choices(choices: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("choices must be a non-empty array")
+
+    choice_by_id: Dict[str, Dict[str, Any]] = {}
+    for choice in choices:
+        if not isinstance(choice, dict):
+            raise ValueError("each choice must be an object")
+        choice_id = str(choice.get("id", "")).strip()
+        choice_text = str(choice.get("text", "")).strip()
+        if not choice_id:
+            raise ValueError("each choice requires a non-empty id")
+        if not choice_text:
+            raise ValueError("each choice requires a non-empty text")
+        if choice_id in choice_by_id:
+            raise ValueError(f"duplicate choice id: {choice_id!r}")
+        choice_by_id[choice_id] = choice
+    return choice_by_id
+
+
 @public
 @visible
 async def modal_string(
@@ -318,6 +338,459 @@ async def modal_string(
 
 @public
 @visible
+async def modal_confirm(
+    message: str,
+    title: str = "",
+    heading: str = "",
+    ok_label: str = "Continue",
+    cancel_label: str = "Go back",
+) -> bool:
+    """Pop up a centered confirmation modal.
+
+    Returns True for Continue, False for Go back or closing the modal.
+    """
+    uid = uuid.uuid4().hex[:8]
+    modal_confirm_id = f"modal_confirm:{uid}"
+    modal_confirm_id_js = json.dumps(modal_confirm_id)
+    message_html = html_lib.escape(message or "")
+    heading_block = f"<h2>{html_lib.escape(heading)}</h2>" if heading else ""
+    ok_label_html = html_lib.escape(ok_label or "Continue")
+    cancel_label_text = str(cancel_label or "").strip()
+    cancel_label_html = html_lib.escape(cancel_label_text)
+    cancel_button_html = (
+        f'<button type="button" class="confirm-button confirm-cancel">{cancel_label_html}</button>'
+        if cancel_label_text else ""
+    )
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    atlantis.session_shared.set(f"{modal_confirm_id}:future", future)
+    html = f"""
+<style>
+{_modal_panel_css(
+    f"#modal-confirm-panel-{uid}",
+    f"#modalconfirm-{uid}",
+    ready_class="modal-confirm-ready",
+    padding=26,
+    heading_margin="4px 0 12px",
+    heading_font_size=24,
+    heading_line_height=1.15,
+)}
+  #modalconfirm-{uid} {{
+    width: 100%;
+    min-width: 0;
+    visibility: hidden;
+    text-align: center;
+  }}
+  .jsPanel:has(#modalconfirm-{uid}) {{
+    width: min(420px, calc(100vw - 32px)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 32px) !important;
+    left: 50% !important;
+    top: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) !important;
+  }}
+  #modalconfirm-{uid} .confirm-message {{
+    margin: 0;
+    color: rgba(255, 250, 240, 0.86);
+    font-size: 18px;
+    line-height: 1.35;
+  }}
+  #modalconfirm-{uid} .confirm-actions {{
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 22px;
+  }}
+  #modalconfirm-{uid} .confirm-button {{
+    box-sizing: border-box;
+    min-width: 96px;
+    min-height: 40px;
+    padding: 0 16px;
+    color: #fffaf0;
+    background: rgba(7, 15, 22, 0.58);
+    border: 1px solid rgba(20, 255, 208, 0.34);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+  }}
+  #modalconfirm-{uid} .confirm-ok {{
+    background: rgba(20, 255, 208, 0.16);
+    border-color: rgba(20, 255, 208, 0.62);
+  }}
+  #modalconfirm-{uid} .confirm-button:hover,
+  #modalconfirm-{uid} .confirm-button:focus {{
+    background: rgba(20, 255, 208, 0.22);
+    border-color: rgba(20, 255, 208, 0.78);
+    outline: none;
+  }}
+  #modalconfirm-{uid} .confirm-button:disabled {{
+    cursor: default;
+    opacity: 0.55;
+  }}
+</style>
+<section id="modalconfirm-{uid}" aria-label="Confirmation">
+  {heading_block}
+  <p class="confirm-message">{message_html}</p>
+  <div class="confirm-actions">
+    {cancel_button_html}
+    <button type="button" class="confirm-button confirm-ok">{ok_label_html}</button>
+  </div>
+</section>
+"""
+    modal_id = await atlantis.client_modal(html, title=title or " ")
+    atlantis.session_shared.set(f"{modal_confirm_id}:modal_id", modal_id)
+    exec_shell_js = json.dumps(atlantis.get_exec_shell_path())
+
+    script = f"""
+(function() {{
+  var settled = false;
+  var observer = null;
+  function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function markHost(host) {{
+    if (!host) return;
+    if (!host.id) host.id = "modal-confirm-panel-{uid}";
+    host.classList.add("modal-confirm-panel");
+    host.dataset.modalKind = "confirm";
+    host.dataset.modalConfirmUid = "{uid}";
+  }}
+  function center(root) {{
+    var host = null;
+    var node = root;
+    for (var i = 0; i < 8 && node && node !== document.body; i++) {{
+      var style = window.getComputedStyle(node);
+      var rect = node.getBoundingClientRect();
+      var fillsViewport = rect.width >= window.innerWidth * 0.9 && rect.height >= window.innerHeight * 0.9;
+      if ((style.position === "fixed" || style.position === "absolute") && !fillsViewport) {{
+        host = node;
+        break;
+      }}
+      node = node.parentElement;
+    }}
+    if (host) markHost(host);
+    root.style.visibility = "visible";
+    root.classList.add("modal-confirm-ready");
+  }}
+  async function settle(action) {{
+    if (settled) return;
+    settled = true;
+    cleanup();
+    if (!window._accessToken) return;
+    try {{
+      await sendChatter(window._accessToken, action, {{
+        modal_confirm_id: {modal_confirm_id_js}
+      }}, {exec_shell_js});
+    }} catch (e) {{}}
+  }}
+  function bind() {{
+    var root = document.getElementById("modalconfirm-{uid}");
+    if (!root) return;
+    center(root);
+    var ok = root.querySelector(".confirm-ok");
+    var cancel = root.querySelector(".confirm-cancel");
+    var buttons = Array.prototype.slice.call(root.querySelectorAll(".confirm-button"));
+    if (ok) {{
+      ok.focus({{ preventScroll: true }});
+      ok.addEventListener("click", function() {{
+        buttons.forEach(function(button) {{ button.disabled = true; }});
+        settle("@modal_confirm_ok");
+      }});
+    }}
+    if (cancel) {{
+      cancel.addEventListener("click", function() {{
+        buttons.forEach(function(button) {{ button.disabled = true; }});
+        settle("@modal_confirm_cancel");
+      }});
+    }}
+    root.addEventListener("keydown", function(event) {{
+      if (event.key === "Escape") {{
+        event.preventDefault();
+        settle("@modal_confirm_cancel");
+      }}
+    }});
+    observer = new MutationObserver(function() {{
+      if (!document.body.contains(root)) {{ settle("@modal_confirm_cancel"); }}
+    }});
+    observer.observe(document.body, {{ childList: true, subtree: true }});
+  }}
+  requestAnimationFrame(function() {{ requestAnimationFrame(bind); }});
+}})()
+"""
+    await atlantis.client_script(script)
+    try:
+        return await future
+    finally:
+        atlantis.session_shared.remove(f"{modal_confirm_id}:future")
+        atlantis.session_shared.remove(f"{modal_confirm_id}:modal_id")
+
+
+@public
+@visible
+async def modal_radio(
+    choices: List[Dict[str, Any]],
+    title: str = "",
+    heading: str = "",
+    current_id: str = "",
+    ok_label: str = "Continue",
+    cancel_label: str = "Go back",
+) -> Optional[Dict[str, Any]]:
+    """Pop up a radio-choice modal and return the selected choice object."""
+    choice_by_id = _validated_modal_choices(choices)
+    current_id = str(current_id or "").strip()
+    if current_id not in choice_by_id:
+        current_id = next(
+            (
+                str(choice.get("id") or "").strip()
+                for choice in choices
+                if not choice.get("disabled")
+            ),
+            "",
+        )
+    if not current_id:
+        raise ValueError("radio choices must include at least one enabled choice")
+
+    uid = uuid.uuid4().hex[:8]
+    modal_radio_id = f"modal_radio:{uid}"
+    modal_radio_id_js = json.dumps(modal_radio_id)
+    heading_block = f"<h2>{html_lib.escape(heading)}</h2>" if heading else ""
+    ok_label_html = html_lib.escape(ok_label or "Continue")
+    cancel_label_text = str(cancel_label or "").strip()
+    cancel_label_html = html_lib.escape(cancel_label_text)
+    cancel_button_html = (
+        f'<button type="button" class="radio-button radio-cancel">{cancel_label_html}</button>'
+        if cancel_label_text else ""
+    )
+    radio_items = []
+    for choice in choices:
+        choice_id = str(choice.get("id") or "").strip()
+        choice_text = str(choice.get("text") or "").strip()
+        disabled = bool(choice.get("disabled"))
+        checked_attr = " checked" if choice_id == current_id else ""
+        disabled_attr = " disabled aria-disabled=\"true\"" if disabled else ""
+        description = str(choice.get("description") or "").strip()
+        description_html = (
+            f'<span class="radio-description">{html_lib.escape(description)}</span>'
+            if description else ""
+        )
+        radio_items.append(
+            f'<label class="radio-choice{" is-disabled" if disabled else ""}">'
+            f'<input type="radio" name="modal-radio-{uid}" value="{html_lib.escape(choice_id, quote=True)}"{checked_attr}{disabled_attr}>'
+            '<span class="radio-mark" aria-hidden="true"></span>'
+            '<span class="radio-copy">'
+            f'<span class="radio-text">{html_lib.escape(choice_text)}</span>'
+            f'{description_html}'
+            '</span>'
+            '</label>'
+        )
+
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    atlantis.session_shared.set(f"{modal_radio_id}:future", future)
+    atlantis.session_shared.set(f"{modal_radio_id}:choices", choice_by_id)
+    html = f"""
+<style>
+{_modal_panel_css(
+    f"#modal-radio-panel-{uid}",
+    f"#modalradio-{uid}",
+    ready_class="modal-radio-ready",
+    padding=24,
+    heading_margin="4px 0 16px",
+    heading_font_size=24,
+    heading_line_height=1.15,
+)}
+  #modalradio-{uid} {{
+    width: 100%;
+    min-width: 0;
+    visibility: hidden;
+  }}
+  .jsPanel:has(#modalradio-{uid}) {{
+    width: min(460px, calc(100vw - 32px)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 32px) !important;
+    left: 50% !important;
+    top: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) !important;
+  }}
+  #modalradio-{uid} .radio-list {{
+    display: grid;
+    gap: 8px;
+    width: 100%;
+  }}
+  #modalradio-{uid} .radio-choice {{
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    color: #fffaf0;
+    background: rgba(7, 15, 22, 0.48);
+    border: 1px solid rgba(20, 255, 208, 0.28);
+    border-radius: 6px;
+    cursor: pointer;
+  }}
+  #modalradio-{uid} .radio-choice:has(input:checked) {{
+    background: rgba(20, 255, 208, 0.16);
+    border-color: rgba(20, 255, 208, 0.7);
+  }}
+  #modalradio-{uid} .radio-choice:focus-within,
+  #modalradio-{uid} .radio-choice:hover {{
+    border-color: rgba(20, 255, 208, 0.72);
+    outline: none;
+  }}
+  #modalradio-{uid} .radio-choice.is-disabled {{
+    cursor: default;
+    opacity: 0.5;
+  }}
+  #modalradio-{uid} input[type="radio"] {{
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }}
+  #modalradio-{uid} .radio-mark {{
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 250, 240, 0.7);
+    border-radius: 50%;
+    background: rgba(7, 15, 22, 0.42);
+  }}
+  #modalradio-{uid} .radio-choice:has(input:checked) .radio-mark {{
+    border-color: #14ffd0;
+    box-shadow: inset 0 0 0 4px rgba(7, 15, 22, 0.88);
+    background: #14ffd0;
+  }}
+  #modalradio-{uid} .radio-copy {{
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }}
+  #modalradio-{uid} .radio-text {{
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+  }}
+  #modalradio-{uid} .radio-description {{
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: rgba(255, 250, 240, 0.68);
+    font-size: 13px;
+    line-height: 1.25;
+  }}
+  #modalradio-{uid} .radio-actions {{
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+  }}
+  #modalradio-{uid} .radio-button {{
+    box-sizing: border-box;
+    min-width: 96px;
+    min-height: 40px;
+    padding: 0 16px;
+    color: #fffaf0;
+    background: rgba(7, 15, 22, 0.58);
+    border: 1px solid rgba(20, 255, 208, 0.34);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+  }}
+  #modalradio-{uid} .radio-ok {{
+    background: rgba(20, 255, 208, 0.16);
+    border-color: rgba(20, 255, 208, 0.62);
+  }}
+  #modalradio-{uid} .radio-button:hover,
+  #modalradio-{uid} .radio-button:focus {{
+    background: rgba(20, 255, 208, 0.22);
+    border-color: rgba(20, 255, 208, 0.78);
+    outline: none;
+  }}
+</style>
+<section id="modalradio-{uid}" aria-label="Choose an option">
+  {heading_block}
+  <div class="radio-list" role="radiogroup">
+    {"".join(radio_items)}
+  </div>
+  <div class="radio-actions">
+    {cancel_button_html}
+    <button type="button" class="radio-button radio-ok">{ok_label_html}</button>
+  </div>
+</section>
+"""
+    modal_id = await atlantis.client_modal(html, title=title or " ")
+    atlantis.session_shared.set(f"{modal_radio_id}:modal_id", modal_id)
+    exec_shell_js = json.dumps(atlantis.get_exec_shell_path())
+
+    script = f"""
+(function() {{
+  var settled = false;
+  var observer = null;
+  function cleanup() {{ if (observer) {{ try {{ observer.disconnect(); }} catch (e) {{}} observer = null; }} }}
+  function reveal(root) {{
+    root.style.visibility = "visible";
+    root.classList.add("modal-radio-ready");
+  }}
+  function settle(action, choiceId) {{
+    if (settled) return;
+    settled = true;
+    cleanup();
+    if (!window._accessToken) return;
+    sendChatter(window._accessToken, action, {{
+      modal_radio_id: {modal_radio_id_js},
+      choice_id: choiceId || ""
+    }}, {exec_shell_js}).catch(function() {{}});
+  }}
+  function selectedValue(root) {{
+    var selected = root.querySelector('input[type="radio"]:checked');
+    return selected ? selected.value : "";
+  }}
+  function bind() {{
+    var root = document.getElementById("modalradio-{uid}");
+    if (!root) return;
+    reveal(root);
+    var ok = root.querySelector(".radio-ok");
+    var cancel = root.querySelector(".radio-cancel");
+    var selected = root.querySelector('input[type="radio"]:checked');
+    if (selected) selected.focus({{ preventScroll: true }});
+    if (ok) ok.addEventListener("click", function() {{ settle("@modal_radio_select", selectedValue(root)); }});
+    if (cancel) cancel.addEventListener("click", function() {{ settle("@modal_radio_cancel", ""); }});
+    root.addEventListener("keydown", function(event) {{
+      if (event.key === "Escape") {{
+        event.preventDefault();
+        settle("@modal_radio_cancel", "");
+      }}
+    }});
+    observer = new MutationObserver(function() {{
+      if (!document.body.contains(root)) {{ settle("@modal_radio_cancel", ""); }}
+    }});
+    observer.observe(document.body, {{ childList: true, subtree: true }});
+  }}
+  requestAnimationFrame(function() {{ requestAnimationFrame(bind); }});
+}})()
+"""
+    await atlantis.client_script(script)
+    try:
+        return await future
+    finally:
+        atlantis.session_shared.remove(f"{modal_radio_id}:future")
+        atlantis.session_shared.remove(f"{modal_radio_id}:modal_id")
+        atlantis.session_shared.remove(f"{modal_radio_id}:choices")
+
+
+@public
+@visible
 async def modal_menu(
     choices: List[Dict[str, Any]],
     title: str = "",
@@ -327,23 +800,11 @@ async def modal_menu(
 
     Returns None if the user closes/cancels the modal without selecting.
     """
-    if not isinstance(choices, list) or not choices:
-        raise ValueError("choices must be a non-empty array")
-
-    choice_by_id: Dict[str, Dict[str, Any]] = {}
+    choice_by_id = _validated_modal_choices(choices)
     choice_buttons = []
     for choice in choices:
-        if not isinstance(choice, dict):
-            raise ValueError("each choice must be an object")
         choice_id = str(choice.get("id", "")).strip()
         choice_text = str(choice.get("text", "")).strip()
-        if not choice_id:
-            raise ValueError("each choice requires a non-empty id")
-        if not choice_text:
-            raise ValueError("each choice requires a non-empty text")
-        if choice_id in choice_by_id:
-            raise ValueError(f"duplicate choice id: {choice_id!r}")
-        choice_by_id[choice_id] = choice
         disabled_attr = " disabled aria-disabled=\"true\"" if choice.get("disabled") else ""
         columns = choice.get("columns")
         if isinstance(columns, list) and columns:
@@ -764,6 +1225,78 @@ async def modal_string_cancel(modal_string_id: str) -> None:
     """Handle the user closing the modal without submitting."""
     modal_key = f"{modal_string_id}:modal_id"
     future_key = f"{modal_string_id}:future"
+    modal_id = atlantis.session_shared.get(modal_key)
+    if modal_id:
+        try:
+            await atlantis.client_modal_close(modal_id)
+        except Exception:
+            pass
+        atlantis.session_shared.remove(modal_key)
+    future = atlantis.session_shared.get(future_key)
+    if future is not None and not future.done():
+        future.set_result(None)
+
+
+async def _settle_modal_confirm(modal_confirm_id: str, result: bool) -> None:
+    modal_key = f"{modal_confirm_id}:modal_id"
+    future_key = f"{modal_confirm_id}:future"
+    modal_id = atlantis.session_shared.get(modal_key)
+    if modal_id:
+        try:
+            await atlantis.client_modal_close(modal_id)
+        except Exception:
+            pass
+        atlantis.session_shared.remove(modal_key)
+    future = atlantis.session_shared.get(future_key)
+    if future is not None and not future.done():
+        future.set_result(result)
+
+
+@public
+@visible
+async def modal_confirm_ok(modal_confirm_id: str) -> None:
+    """Handle a continue click in a confirmation modal."""
+    await _settle_modal_confirm(modal_confirm_id, True)
+
+
+@public
+@visible
+async def modal_confirm_cancel(modal_confirm_id: str) -> None:
+    """Handle cancel or close in a confirmation modal."""
+    await _settle_modal_confirm(modal_confirm_id, False)
+
+
+@public
+@visible
+async def modal_radio_select(modal_radio_id: str, choice_id: str) -> None:
+    """Handle a radio modal continue click."""
+    choice_id = (choice_id or "").strip()
+    if not choice_id:
+        raise ValueError("choice_id is required")
+    modal_key = f"{modal_radio_id}:modal_id"
+    future_key = f"{modal_radio_id}:future"
+    choices_key = f"{modal_radio_id}:choices"
+    modal_id = atlantis.session_shared.get(modal_key)
+    if modal_id:
+        await atlantis.client_modal_close(modal_id)
+        atlantis.session_shared.remove(modal_key)
+    choices = atlantis.session_shared.get(choices_key) or {}
+    choice = choices.get(choice_id)
+    if choice is None:
+        raise ValueError(f"Unknown radio choice: {choice_id!r}")
+    future = atlantis.session_shared.get(future_key)
+    if future is None:
+        raise ValueError("Radio modal is no longer active")
+    if not future.done():
+        future.set_result(choice)
+
+
+@public
+@visible
+async def modal_radio_cancel(modal_radio_id: str, choice_id: str = "") -> None:
+    """Handle cancel or close in a radio modal."""
+    modal_key = f"{modal_radio_id}:modal_id"
+    future_key = f"{modal_radio_id}:future"
     modal_id = atlantis.session_shared.get(modal_key)
     if modal_id:
         try:

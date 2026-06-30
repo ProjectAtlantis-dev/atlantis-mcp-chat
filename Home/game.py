@@ -1,12 +1,14 @@
 """Game state tools"""
 
 import atlantis
+import humanize
 import os
 import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 
 from .common import home_path, _read_json, _write_json
+from .modal import modal_menu
 
 
 GAME_STATE_RUNNING = "running"
@@ -260,6 +262,67 @@ def _game_rows() -> list:
     for e in entries:
         del e["_ts"]
     return entries
+
+
+def _format_game_menu_age(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "Unknown"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return raw
+    return humanize.naturaltime(datetime.now() - parsed)
+
+
+def _game_picker_choices(games: list) -> list[Dict[str, Any]]:
+    games = sorted(games, key=lambda game: str(game.get("created") or ""), reverse=True)
+    choices: list[Dict[str, Any]] = []
+    for game in games:
+        game_key = str(game.get("game_key", "")).strip()
+        if not game_key:
+            continue
+        user_cnt = game.get("user_cnt")
+        choices.append({
+            "id": game_key,
+            "text": game_key[:4],
+            "columns": [
+                game_key[:4],
+                _format_game_menu_age(game.get("created")),
+                str(game.get("owner") or "Unknown owner"),
+                str(game.get("roster_scene") or "No scene"),
+                str(user_cnt) if isinstance(user_cnt, int) else "-",
+            ],
+            "column_headers": ["Key", "Started", "Owner", "Scene", "Players"],
+            "game_key": game_key,
+        })
+    return choices
+
+
+async def _game_pick_dialog(
+    games: Optional[list] = None,
+    *,
+    title: str = "Game",
+    heading: str = "Select game",
+) -> Optional[str]:
+    choices = _game_picker_choices(_game_rows() if games is None else games)
+    if not choices:
+        raise RuntimeError("No existing games found")
+    choice = await modal_menu(
+        choices,
+        title=title,
+        heading=heading,
+    )
+    if choice is None:
+        return None
+    game_key = str(choice.get("game_key") or choice.get("id") or "").strip()
+    return game_key or None
+
+
+@visible
+async def game_pick() -> Optional[str]:
+    """Pick an existing game using the standard game picker dialog."""
+    return await _game_pick_dialog()
 
 
 @public
