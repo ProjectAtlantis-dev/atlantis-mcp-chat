@@ -672,7 +672,28 @@ def _camera_current_heading(current: Dict[str, str]) -> str:
         return f"Current: location - {label}"
     if target_type == "slot" and current.get("slot_key"):
         return f"Current: roster slot - {current['slot_key']}"
-    return "No camera set"
+    return ""
+
+
+def _camera_location_label(location: str) -> str:
+    try:
+        return load_location(location).get("displayName") or location
+    except ValueError:
+        return location
+
+
+def _camera_target_descriptions(current: Dict[str, str]) -> Dict[str, str]:
+    location_description = "Watch a fixed place in the scene."
+    slot_description = "Follow a roster slot as it moves."
+    target_type = current.get("target_type")
+    if target_type == "location" and current.get("location"):
+        location_description = f"Current: {_camera_location_label(current['location'])}"
+    elif target_type == "slot" and current.get("slot_key"):
+        slot_description = f"Current: {current['slot_key']}"
+    return {
+        "location": location_description,
+        "slot": slot_description,
+    }
 
 
 def _camera_slot_choices(roster: list, current: Dict[str, str]) -> list[Dict[str, str]]:
@@ -694,11 +715,7 @@ def _camera_slot_choices(roster: list, current: Dict[str, str]) -> list[Dict[str
             details.append(bot_sid)
         location = str(row.get("location") or "").strip()
         if location:
-            try:
-                location_label = load_location(location).get("displayName") or location
-            except ValueError:
-                location_label = location
-            details.append(f"at {location_label}")
+            details.append(f"at {_camera_location_label(location)}")
         if current_marker:
             details.append(current_marker.lower())
         choices.append({
@@ -724,24 +741,26 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
         mode = ""
         if has_locations and slot_choices:
             current_target_type = str(current.get("target_type") or "")
-            current_mode = current_target_type if current_target_type in {"location", "slot"} else "location"
+            current_mode = current_target_type if current_target_type in {"location", "slot"} else ""
+            target_descriptions = _camera_target_descriptions(current)
             try:
                 mode_choice = await modal_radio(
                     [
                         {
                             "id": "location",
                             "text": "Location",
-                            "description": "Watch a fixed place in the scene.",
+                            "description": target_descriptions["location"],
                         },
                         {
                             "id": "slot",
                             "text": "Roster slot",
-                            "description": "Follow a roster slot as it moves.",
+                            "description": target_descriptions["slot"],
                         },
                     ],
                     title="Camera",
                     heading=f"Lock camera to - {current_heading}",
                     current_id=current_mode,
+                    require_selection=False,
                 )
             except ModalGoBack:
                 return False
@@ -764,7 +783,7 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
                 if has_locations and slot_choices:
                     continue
                 return False
-            await atlantis.client_command("@camera_bind", {"location": location})
+            await atlantis.client_command("@camera_bind", {"game_key": game_key, "location": location})
             return True
 
         if mode == "slot":
@@ -783,7 +802,7 @@ async def _camera_edit(roster: Optional[list] = None, game_key: Optional[str] = 
             slot_key = str(choice.get("slot_key") or choice.get("id") or "").strip()
             if not slot_key:
                 return False
-            await atlantis.client_command("@camera_follow", {"slot_key": slot_key})
+            await atlantis.client_command("@camera_follow", {"game_key": game_key, "slot_key": slot_key})
             return True
         raise ValueError(f"Unknown camera target mode: {mode!r}")
 

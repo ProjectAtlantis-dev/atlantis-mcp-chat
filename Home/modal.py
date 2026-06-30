@@ -543,11 +543,12 @@ async def modal_radio(
     current_id: str = "",
     ok_label: str = "Continue",
     cancel_label: str = "Go back",
+    require_selection: bool = True,
 ) -> Dict[str, Any]:
     """Pop up a radio-choice modal and return the selected choice object."""
     choice_by_id = _validated_modal_choices(choices)
     current_id = str(current_id or "").strip()
-    if current_id not in choice_by_id:
+    if current_id not in choice_by_id and require_selection:
         current_id = next(
             (
                 str(choice.get("id") or "").strip()
@@ -556,7 +557,9 @@ async def modal_radio(
             ),
             "",
         )
-    if not current_id:
+    elif current_id not in choice_by_id:
+        current_id = ""
+    if require_selection and not current_id:
         raise ValueError("radio choices must include at least one enabled choice")
 
     uid = uuid.uuid4().hex[:8]
@@ -738,6 +741,7 @@ async def modal_radio(
     modal_id = await atlantis.client_modal(html, title=title or " ")
     atlantis.session_shared.set(f"{modal_radio_id}:modal_id", modal_id)
     exec_shell_js = json.dumps(atlantis.get_exec_shell_path())
+    require_choice_before_submit_js = json.dumps(True)
 
     script = f"""
 (function() {{
@@ -762,6 +766,10 @@ async def modal_radio(
     var selected = root.querySelector('input[type="radio"]:checked');
     return selected ? selected.value : "";
   }}
+  function syncOk(root, ok) {{
+    if (!ok) return;
+    ok.disabled = {require_choice_before_submit_js} && !selectedValue(root);
+  }}
   function bind() {{
     var root = document.getElementById("modalradio-{uid}");
     if (!root) return;
@@ -770,7 +778,14 @@ async def modal_radio(
     var cancel = root.querySelector(".radio-cancel");
     var selected = root.querySelector('input[type="radio"]:checked');
     if (selected) selected.focus({{ preventScroll: true }});
-    if (ok) ok.addEventListener("click", function() {{ settle("@modal_radio_select", selectedValue(root)); }});
+    syncOk(root, ok);
+    Array.prototype.slice.call(root.querySelectorAll('input[type="radio"]')).forEach(function(input) {{
+      input.addEventListener("change", function() {{ syncOk(root, ok); }});
+    }});
+    if (ok) ok.addEventListener("click", function() {{
+      if (ok.disabled) return;
+      settle("@modal_radio_select", selectedValue(root));
+    }});
     if (cancel) cancel.addEventListener("click", function() {{ settle("@modal_radio_cancel", ""); }});
     root.addEventListener("keydown", function(event) {{
       if (event.key === "Escape") {{

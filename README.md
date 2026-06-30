@@ -1,7 +1,6 @@
 # Abstrait
 
-This repository is a multi-user human and bot chat system. A game is the chat
-session.
+This repository is a multi-user human and bot chat system. An MCP "game" is the resulting scenario and should match 1:1 with the game
 
 ## "Create New Game" Flow
 

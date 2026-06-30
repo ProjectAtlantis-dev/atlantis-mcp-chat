@@ -82,6 +82,7 @@ def _resolve_camera_location(game_key: str, entry: Dict[str, Any]) -> Optional[s
 async def _paint_location(location: str) -> None:
     background = location_image_path(location)
     align = _location_default_camera_align(location)
+    await atlantis.client_log(f"camera paint location={location!r} background={background!r} align={align!r}")
     await atlantis.set_background(background, vertical_align=align)
 
 
@@ -177,14 +178,13 @@ async def _camera_follow_slot(
     if not terminal_key:
         raise RuntimeError("No terminal key in this call context")
 
-    location = _slot_location(game_key, slot_key)
-    if not location:
-        raise RuntimeError(f"Roster slot {slot_key!r} has no current location yet")
-    _require_leaf(location)
-    location_image_path(location)  # resolve + validate before mutating
-    _location_default_camera_align(location)
-
     slot_key = str(slot_key).strip()
+    location = _slot_location(game_key, slot_key)
+    if location:
+        _require_leaf(location)
+        location_image_path(location)  # resolve + validate before mutating
+        _location_default_camera_align(location)
+
     cameras = _load_cameras(game_key)
     changed = False
     session_keys = replace_session_keys or []
@@ -219,20 +219,29 @@ async def _camera_follow_slot(
     await atlantis.client_log(
         f"camera_follow terminal={terminal_key!r} slot={slot_key!r} location={location!r}"
     )
-    await _paint_location(location)
-    await atlantis.client_log(f"camera painted terminal={terminal_key!r} location={location!r}")
+    if location:
+        await _paint_location(location)
+        await atlantis.client_log(f"camera painted terminal={terminal_key!r} location={location!r}")
+    else:
+        await atlantis.client_log(
+            f"camera_follow pending terminal={terminal_key!r} slot={slot_key!r}; slot has no location yet"
+        )
     await _render_cameras(game_key)
     return {
         "terminal": terminal_key,
         "target_type": "slot",
         "slot_key": slot_key,
-        "location": location,
+        "location": location or "",
     }
 
 
 @visible
 async def camera_follow(game_key: str, slot_key: str) -> Dict[str, Any]:
-    """Bind the calling terminal to follow a roster slot's current Location."""
+    """Bind the calling terminal to follow a roster slot.
+
+    If the slot has not been placed yet, the follow target is still recorded;
+    the terminal is painted once the slot has a current Location.
+    """
     return await _camera_follow_slot(game_key, slot_key)
 
 
