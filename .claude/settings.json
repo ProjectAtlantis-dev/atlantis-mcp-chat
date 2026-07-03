@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(ffprobe *)",
+      "Bash(git grep *)",
       "mcp__atlantis__readme"
     ]
   }

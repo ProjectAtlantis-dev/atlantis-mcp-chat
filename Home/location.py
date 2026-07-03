@@ -1,14 +1,13 @@
 """Location tools"""
 
 import atlantis
-import base64
 import json
 import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 
-from .common import _ensure_thumb, home_path, _require_str
+from .common import _ensure_thumb, _image_data_uri, home_path, _require_str
 from dynamic_functions.Home.modal import modal_menu
 
 logger = logging.getLogger("dynamic_function")
@@ -158,16 +157,6 @@ def location_thumb(loc_name: str) -> str:
     return _ensure_thumb(image_path)
 
 
-def _image_data_uri(path: str) -> str:
-    if not path or not os.path.isfile(path):
-        return ""
-    ext = os.path.splitext(path)[1].lower().lstrip(".")
-    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
-    with open(path, "rb") as image_file:
-        data = base64.b64encode(image_file.read()).decode("ascii")
-    return f"data:image/{mime};base64,{data}"
-
-
 def _location_picker_choices(current_location: str = "") -> List[Dict[str, Any]]:
     choices: List[Dict[str, Any]] = []
     current_location = str(current_location or "").strip()
@@ -258,13 +247,7 @@ def _location_rows() -> List[Dict[str, Any]]:
             image_path = os.path.join(entry_dir, image_file)
             if os.path.isfile(image_path):
                 mtimes.append(os.path.getmtime(image_path))
-                thumb = _ensure_thumb(image_path)
-                if thumb:
-                    ext = os.path.splitext(thumb)[1].lower().lstrip('.')
-                    mime = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png', 'gif': 'gif', 'webp': 'webp'}.get(ext, 'jpeg')
-                    with open(thumb, 'rb') as img:
-                        b64 = base64.b64encode(img.read()).decode('ascii')
-                    image_data = f'data:image/{mime};base64,{b64}'
+                image_data = _image_data_uri(_ensure_thumb(image_path))
         locations.append({
             'name': name,
             'displayName': data.get('displayName', name),

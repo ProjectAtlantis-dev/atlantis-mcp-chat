@@ -1,5 +1,6 @@
 """Shared helpers — path resolution, JSON I/O, and thumbnails."""
 
+import base64
 import json
 import logging
 import os
@@ -9,7 +10,7 @@ import atlantis
 
 logger = logging.getLogger("dynamic_function")
 
-CHAT_DEFAULT_BG_ALIGN = "75%"
+APP_DEFAULT_BG_ALIGN = "75%"
 
 # ---------------------------------------------------------------------------
 # Paths & JSON I/O
@@ -20,7 +21,8 @@ def home_path(*parts: str) -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *parts))
 
 
-def _chat_default_bg_path() -> str:
+@visible
+def app_default_bg_path() -> str:
     return os.path.join(os.path.dirname(__file__), "builder.jpg")
 
 
@@ -28,8 +30,8 @@ def _chat_default_bg_path() -> str:
 async def app_bg_default() -> None:
     """Set the chat default background image."""
     await atlantis.set_background(
-        _chat_default_bg_path(),
-        vertical_align=CHAT_DEFAULT_BG_ALIGN,
+        app_default_bg_path(),
+        vertical_align=APP_DEFAULT_BG_ALIGN,
     )
 
 
@@ -105,3 +107,13 @@ def thumbify(image_path: str) -> str:
     if not os.path.isfile(image_path):
         raise ValueError(f"Image not found: {image_path}")
     return _ensure_thumb(image_path)
+
+
+def _image_data_uri(path: str) -> str:
+    if not path or not os.path.isfile(path):
+        return ""
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
+    with open(path, "rb") as image_file:
+        data = base64.b64encode(image_file.read()).decode("ascii")
+    return f"data:image/{mime};base64,{data}"

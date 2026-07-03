@@ -6,7 +6,6 @@ model settings all live on the bot.
 """
 
 import atlantis
-import base64
 import json
 import logging
 import os
@@ -14,7 +13,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, TypedDict
 
-from .common import _ensure_thumb, home_path, _require_str
+from .common import _ensure_thumb, _image_data_uri, home_path, _require_str
 from .location import _leaf_location_keys
 from dynamic_functions.Home.modal import modal_menu
 
@@ -138,16 +137,6 @@ def bot_thumb(bot_sid: str) -> str:
     if not os.path.isfile(image_path):
         return ""
     return _ensure_thumb(image_path)
-
-
-def _image_data_uri(path: str) -> str:
-    if not path or not os.path.isfile(path):
-        return ""
-    ext = os.path.splitext(path)[1].lower().lstrip(".")
-    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
-    with open(path, "rb") as image_file:
-        data = base64.b64encode(image_file.read()).decode("ascii")
-    return f"data:image/{mime};base64,{data}"
 
 
 def bot_image_data(bot_sid: str) -> str:
