@@ -1252,8 +1252,8 @@ async def _game_join_authorized(game_key: str, meta: Dict[str, Any]) -> Dict[str
 
 
 @public
-async def game_find_or_create() -> str:
-    """Ask whether to resume an existing game or create a new one."""
+async def first_menu() -> str:
+    """To the bots"""
     games = _game_rows()
     joinable_games = _game_candidates(games, "join")
     resumable_games = _game_candidates(games, "resume")
@@ -1274,7 +1274,7 @@ async def game_find_or_create() -> str:
     if choice is None:
         raise RuntimeError("Game selection cancelled")
 
-    await atlantis.client_log(f"game_find_or_create selected: {choice.get('id')!r}")
+    await atlantis.client_log(f"choice selected: {choice.get('id')!r}")
 
     if choice.get("id") == "create":
         keys = await game_new()

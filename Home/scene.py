@@ -107,6 +107,7 @@ async def _scene_pick_dialog(
         choices,
         title=title,
         heading=heading,
+        cancel_label="",
     )
     scene = str(choice.get("scene") or choice.get("id") or "").strip()
     return scene or None

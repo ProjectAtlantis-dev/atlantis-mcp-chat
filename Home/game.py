@@ -416,9 +416,6 @@ async def game_stop(game_key: str) -> dict:
     """Set a game state to stopped."""
     return await _game_set_state(game_key, GAME_STATE_STOPPED)
 
-
-# % game_find_or_create
-
 # % _game_rows()
 
 # % game show
