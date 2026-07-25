@@ -1,1 +1,0 @@
-"""Home dynamic functions package."""
